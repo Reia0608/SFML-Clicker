@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{5F90EFE3-BD2F-4575-AEF9-FC5524DBA575}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>SFML_Clicker</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <SFML_INCLUDE>C:\SFML-3.1.0\include</SFML_INCLUDE>
+    <SFML_LIB>C:\SFML-3.1.0\lib</SFML_LIB>
+    <SFML_BIN>C:\SFML-3.1.0\bin</SFML_BIN>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SFML_INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(SFML_LIB);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>sfml-graphics-d.lib;sfml-window-d.lib;sfml-system-d.lib;sfml-audio-d.lib;sfml-network-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /y /d "$(SFML_BIN)\*.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(SFML_INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(SFML_LIB);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>sfml-graphics.lib;sfml-window.lib;sfml-system.lib;sfml-audio.lib;sfml-network.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>xcopy /y /d "$(SFML_BIN)\*.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="AchievementManager.cpp" />
+    <ClCompile Include="AchievementsTab.cpp" />
+    <ClCompile Include="DebugTab.cpp" />
+    <ClCompile Include="DPSTracker.cpp" />
+    <ClCompile Include="Enemy.cpp" />
+    <ClCompile Include="EnemySpawner.cpp" />
+    <ClCompile Include="Familiar.cpp" />
+    <ClCompile Include="Fonts.cpp" />
+    <ClCompile Include="Game.cpp" />
+    <ClCompile Include="Hero.cpp" />
+    <ClCompile Include="Images.cpp" />
+    <ClCompile Include="ItemBar.cpp" />
+    <ClCompile Include="ItemManager.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="OptionsTab.cpp" />
+    <ClCompile Include="Projectile.cpp" />
+    <ClCompile Include="Randomize.cpp" />
+    <ClCompile Include="SaveIndicator.cpp" />
+    <ClCompile Include="ShopTab.cpp" />
+    <ClCompile Include="Sprites.cpp" />
+    <ClCompile Include="Stage.cpp" />
+    <ClCompile Include="Statistics.cpp" />
+    <ClCompile Include="StatisticsTab.cpp" />
+    <ClCompile Include="TabbedPanel.cpp" />
+    <ClCompile Include="Text.cpp" />
+    <ClCompile Include="TextInputField.cpp" />
+    <ClCompile Include="Textures.cpp" />
+    <ClCompile Include="Times.cpp" />
+    <ClCompile Include="UIButton.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Achievement.h" />
+    <ClInclude Include="AchievementManager.h" />
+    <ClInclude Include="AchievementsTab.h" />
+    <ClInclude Include="Anchor.h" />
+    <ClInclude Include="DebugTab.h" />
+    <ClInclude Include="Elements.h" />
+    <ClInclude Include="FamiliarAttackAnimation.h" />
+    <ClInclude Include="BigNumber.h" />
+    <ClInclude Include="DPSTracker.h" />
+    <ClInclude Include="Enemy.h" />
+    <ClInclude Include="EnemySpawner.h" />
+    <ClInclude Include="EnemyType.h" />
+    <ClInclude Include="Familiar.h" />
+    <ClInclude Include="FamiliarAbility.h" />
+    <ClInclude Include="FamiliarType.h" />
+    <ClInclude Include="Fonts.h" />
+    <ClInclude Include="Game.h" />
+    <ClInclude Include="Hero.h" />
+    <ClInclude Include="IDebugController.h" />
+    <ClInclude Include="Images.h" />
+    <ClInclude Include="ISaveable.h" />
+    <ClInclude Include="ItemBar.h" />
+    <ClInclude Include="ItemDefinition.h" />
+    <ClInclude Include="ItemManager.h" />
+    <ClInclude Include="IWindowController.h" />
+    <ClInclude Include="LayoutManager.h" />
+    <ClInclude Include="OptionsTab.h" />
+    <ClInclude Include="Projectile.h" />
+    <ClInclude Include="PublicVariables.h" />
+    <ClInclude Include="Randomize.h" />
+    <ClInclude Include="SaveIndicator.h" />
+    <ClInclude Include="ShopTab.h" />
+    <ClInclude Include="Sprites.h" />
+    <ClInclude Include="Stage.h" />
+    <ClInclude Include="Statistics.h" />
+    <ClInclude Include="StatisticsTab.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="TabbedPanel.h" />
+    <ClInclude Include="TabContent.h" />
+    <ClInclude Include="Text.h" />
+    <ClInclude Include="TextInputField.h" />
+    <ClInclude Include="Textures.h" />
+    <ClInclude Include="Times.h" />
+    <ClInclude Include="UIButton.h" />
+    <ClInclude Include="WindowMode.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

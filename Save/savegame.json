@@ -1,0 +1,54 @@
+[Game]
+version=1
+windowMode=0
+resolutionIndex=0
+deathAnimationsEnabled=0
+stageNumber=4
+[Hero]
+currency=109756.545200
+attackPower=75.000000
+goldMultiplier=12.500000
+critUnlocked=1
+critChance=0.022500
+critDamageMultiplier=2.200000
+[Familiar]
+name=1
+unlocked=1
+physicalAttackPower=59.000000
+elementalAttackPower=35.000000
+attackInterval=1.000000
+[Statistics]
+enemiesDefeated=744
+bossesDefeated=3
+highestStageReached=3
+shopUpgradesPurchased=150
+totalClicks=26794
+playTimeSeconds=4586.139160
+criticalHitsLanded=543
+[Achievements]
+ach=First Blood|1|1
+ach=Getting Started|1|1
+ach=Veteran Slayer|1|1
+ach=Boss Down|1|1
+ach=Boss Hunter|0|0
+ach=Stage Climber|0|0
+ach=Critical Thinker|1|1
+ach=Shopaholic|1|1
+ach=Clicker|1|1
+ach=Dedicated|1|1
+[Items]
+count=6
+inv0=1
+inv1=0
+inv2=2
+inv3=0
+inv4=0
+inv5=0
+[Shop]
+attackUpgradeCost=52557.659975
+goldMultiplierCost=336682.243921
+critChanceCost=51200.000000
+critDamageCost=19200.000000
+familiarPhysicalCost6500.000000
+familiarElementalCost8000.000000
+familiarCooldownCost10000.000000
