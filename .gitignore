@@ -1,0 +1,23 @@
+# Visual Studio workspace / user-specific files
+.vs/
+*.suo
+*.user
+
+# MSVC build output (Debug/, Release/, x64/ at any depth)
+Debug/
+Release/
+x64/
+ipch/
+*.aps
+*.idb
+*.ilk
+*.obj
+*.pch
+*.pdb
+*.pgc
+*.pgd
+*.tlog
+
+# macOS metadata from downloaded asset packs
+.DS_Store
+__MACOSX/
