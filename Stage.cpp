@@ -396,7 +396,7 @@ void Stage::drawDecoration(size_t index, sf::RenderWindow* window)
 	window->draw(sprite);
 }
 
-void Stage::drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& actors)
+void Stage::drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& actors, const std::vector<HudElement>& hudElements)
 {
 	// Draw the tile map (always at the very back)
 	for (int y = 0; y < mapSizeY; ++y)
@@ -446,7 +446,13 @@ void Stage::drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& act
 	}
 
 	// Draw the stage text last so it stays readable on top of everything else.
+	// Third layer: HUD elements, drawn last so nothing from the world layers below can ever cover
+	// them. The stage number lives here too, alongside any other play-area trackers Game passes in.
 	window->draw(*stageText);
+	for (const auto& hud : hudElements)
+	{
+		hud.draw();
+	}
 }
 
 void Stage::updateTexts()

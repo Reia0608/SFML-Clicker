@@ -146,6 +146,10 @@ void Hero::updateDPS(float dt)
 void Hero::draw(sf::RenderWindow* window)
 {
 	window->draw(*sprites);
+}
+
+void Hero::drawHUD(sf::RenderWindow* window)
+{
 	window->draw(*currencyText);
 	window->draw(*dpsText);
 	window->draw(*clickDamageText);

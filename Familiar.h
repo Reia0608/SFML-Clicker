@@ -6,8 +6,8 @@
 #include "FamiliarType.h"
 #include "Text.h"
 #include "DPSTracker.h"
-#include <string>
 #include "Projectile.h"
+#include <string>
 #include <vector>
 #include <functional>
 
@@ -29,6 +29,7 @@ private:
 	float attackCooldownRemaining = 0.0f;
 	float AbilityCooldown = 10.0f;
 	bool unlocked = false;
+	static constexpr float minAttackInterval = 0.5f; // hard floor - cooldown reduction upgrades stop having any effect below this
 
 	Sprites* sprites;
 	DPSTracker familiarDPSTracker;
@@ -62,6 +63,7 @@ private:
 	void updateCooldownIndicator();
 	static void buildRingArc(sf::VertexArray& target, sf::Vector2f center, float innerRadius, float outerRadius, float startAngleDeg, float sweepAngleDeg, int maxSegments, sf::Color color);
 	void attackAnimation(); // plays the attack animation and returns to idle once finished
+	void syncDPSTrackerWindow(); // keeps familiarDPSTracker's averaging window matched to the current attackInterval
 
 public:
 	Familiar(FamiliarType familiarType);
@@ -69,7 +71,8 @@ public:
 
 	void onResize();
 	void update(float dt);
-	void draw(sf::RenderWindow* window);
+	void draw(sf::RenderWindow* window);     // sprite + projectiles - depth-sorted with decorations
+	void drawHUD(sf::RenderWindow* window);  // cooldown ring/text + familiarDPSText - HUD layer
 
 	float getGroundY() const { return sprites->getGroundY(); } // Y of the familiar's feet on the ground - Stage uses this to depth-sort it against decorations
 
@@ -86,6 +89,7 @@ public:
 	void increasePhysicalAttack(BigNumber amount);
 	void increaseElementalAttack(BigNumber amount);
 	void reduceAttackCooldown(float amount);
+	bool isAttackIntervalAtMinimum() const; // true once attackInterval has hit minAttackInterval - ShopTab uses this to permanently disable the reduction button
 
 	// for save/ load
 	void setName(FamiliarName name);
@@ -98,5 +102,5 @@ public:
 	void setAttackInterval(float seconds); // for later upgrades ("attack interval" reduction) and save/load restore
 
 	void updateFamiliarDPSText(); // public so ShopTab can access it to update
-	BigNumber getFamiliarDPS();
+	BigNumber getFamiliarDPS() const;
 };

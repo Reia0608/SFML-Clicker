@@ -76,6 +76,14 @@ public:
 		std::function<void()> draw; // draws the whole actor (sprite + attached labels) at its current position
 	};
 
+	// A HUD element for the play area - always drawn last, on top of tiles, decorations, and
+	// actor sprites, regardless of world position. Use for trackers (DPS/damage/gold text,
+	// cooldown rings, etc.) that must never be occluded by a decoration sorting in front of them.
+	struct HudElement
+	{
+		std::function<void()> draw;
+	};
+
 	Stage();
 	virtual ~Stage();
 
@@ -86,7 +94,7 @@ public:
 	void setStageNumber(int newStageNumber);
 
 	void onResize();
-	void drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& actors = {}); // draws tiles, then decorations and actors interleaved back-to-front by ground-Y
+	void drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& actors = {}, const std::vector<HudElement>& hudElements = {}); // draws tiles, then decorations and actors interleaved back-to-front by ground-Y
 
 	void updateTexts();
 };

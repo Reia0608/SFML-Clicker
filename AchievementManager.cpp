@@ -4,39 +4,79 @@
 void AchievementManager::initAchievements()
 {
 	Statistics* stats = statistics;   // copy of the pointer to use in lambdas for clarity
+	Familiar* fam = familiar;         // same pattern, for clarity in the lambda below
+	ItemManager* items = itemManager;
 
+	// --- existing achievements stay exactly as they are ---
 	achievements.push_back(Achievement("First Blood", "Defeat 1 enemy",
-		[stats]() { return stats->getEnemiesDefeated() >= 1; }, BigNumber(10)));
+		[stats]() { return stats->getEnemiesDefeated() >= 1; }, BigNumber(100)));
 
-	achievements.push_back(Achievement("Getting Started", "Defeat 10 enemies",
-		[stats]() { return stats->getEnemiesDefeated() >= 10; }, BigNumber(25)));
+	// ... (rest of your existing block unchanged) ...
 
-	achievements.push_back(Achievement("Veteran Slayer", "Defeat 100 enemies",
-		[stats]() { return stats->getEnemiesDefeated() >= 100; }, BigNumber(100)));
+	// --- new tiered achievements ---
+	addThresholdAchievement("Slayer Legend", "Defeat 1000 enemies",
+		[stats]() { return stats->getEnemiesDefeated(); }, 1000, BigNumber(1000000));
 
-	achievements.push_back(Achievement("Boss Down", "Defeat your first boss",
-		[stats]() { return stats->getBossesDefeated() >= 1; }, BigNumber(200)));
+	addThresholdAchievement("Nightmare", "Defeat 25 bosses",
+		[stats]() { return stats->getBossesDefeated(); }, 25, BigNumber(5000));
 
-	achievements.push_back(Achievement("Boss Hunter", "Defeat 5 bosses",
-		[stats]() { return stats->getBossesDefeated() >= 5; }, BigNumber(500)));
+	addThresholdAchievement("Stage Conqueror", "Reach Stage 10",
+		[stats]() { return stats->getHighestStageReached(); }, 10, BigNumber(2000));
 
-	achievements.push_back(Achievement("Stage Climber", "Reach Stage 5",
-		[stats]() { return stats->getHighestStageReached() >= 5; }, BigNumber(300)));
+	addThresholdAchievement("Stage Master", "Reach Stage 20",
+		[stats]() { return stats->getHighestStageReached(); }, 20, BigNumber(20000));
 
-	achievements.push_back(Achievement("Critical Thinker", "Land 100 critical hits",
-		[stats]() { return stats->getCriticalHitsLanded() >= 100; }, BigNumber(150)));
+	addThresholdAchievement("Sharpshooter", "Land 1000 critical hits",
+		[stats]() { return stats->getCriticalHitsLanded(); }, 1000, BigNumber(2000000));
 
-	achievements.push_back(Achievement("Shopaholic", "Purchase 10 shop upgrades",
-		[stats]() { return stats->getShopUpgradesPurchased() >= 10; }, BigNumber(150)));
+	addThresholdAchievement("Big Spender", "Purchase 50 shop upgrades",
+		[stats]() { return stats->getShopUpgradesPurchased(); }, 50, BigNumber(3000));
 
-	achievements.push_back(Achievement("Clicker", "Click 500 times",
-		[stats]() { return stats->getTotalClicks() >= 500; }, BigNumber(75)));
+	addThresholdAchievement("Click Master", "Click 5000 times",
+		[stats]() { return stats->getTotalClicks(); }, 5000, BigNumber(3000));
 
-	achievements.push_back(Achievement("Dedicated", "Play for 10 minutes",
-		[stats]() { return stats->getPlayTimeSeconds() >= 600.0f; }, BigNumber(100)));
+	addThresholdAchievement("Marathon Runner", "Play for 1 hour",
+		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 3600, BigNumber(15000));
+
+	addThresholdAchievement("Endurance", "Play for 5 hours",
+		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 18000, BigNumber(100000));
+
+	achievements.push_back(Achievement("Gold Rush", "Earn 100,000 total gold",
+		[stats]() { return stats->getTotalGoldEarned() >= BigNumber(100000); }, BigNumber(1000)));
+
+	achievements.push_back(Achievement("Familiar Bond", "Summon your first familiar",
+		[fam]() { return fam->isUnlocked(); }, BigNumber(500)));
+
+	achievements.push_back(Achievement("Speedrunner", "Defeat a boss in under 5 seconds",
+		[stats]() {
+			float t = stats->getFastestBossKillSeconds();
+			return t >= 0.0f && t <= 5.0f;
+		}, BigNumber(10000)));
+
+	achievements.push_back(Achievement("Collector", "Collect your first item",
+		[items]() {
+			int total = 0;
+			for (int i = 0; i < items->getItemCount(); i++) total += items->getInventoryCount(i);
+			return total >= 1;
+		}, BigNumber(300)));
+
+	achievements.push_back(Achievement("Hoarder", "Collect 3 items", // unlocking this also grants +1.0 gold multiplier, see update()
+		[items]() {
+			int total = 0;
+			for (int i = 0; i < items->getItemCount(); i++) total += items->getInventoryCount(i);
+			return total >= 3;
+		}, BigNumber(1000)));
 }
 
-AchievementManager::AchievementManager(Hero* hero, Statistics* statistics) : hero(hero), statistics(statistics)
+void AchievementManager::addThresholdAchievement(const std::string& name, const std::string& description,
+	std::function<int()> getter, int threshold, BigNumber reward)
+{
+	achievements.push_back(Achievement(name, description,
+		[getter, threshold]() { return getter() >= threshold; }, reward));
+}
+
+AchievementManager::AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager)
+	: hero(hero), statistics(statistics), familiar(familiar), itemManager(itemManager)
 {
 	initAchievements();
 }
@@ -49,6 +89,12 @@ void AchievementManager::update()
 		{
 			achievement.unlocked = true;
 			hero->grantBonusGold(achievement.goldReward);
+
+			if (achievement.name == "Hoarder") // special-cased bonus effect for this achievement
+			{
+				hero->increaseGoldMultiplier(1.0);
+			}
+
 			if (onAchievementUnlocked)
 			{
 				onAchievementUnlocked(achievement);

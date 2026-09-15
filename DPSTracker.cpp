@@ -32,3 +32,13 @@ BigNumber DPSTracker::getDPS() const
 	}
 	return total / windowDuration;
 }
+
+void DPSTracker::setWindowDuration(float seconds)
+{
+	windowDuration = std::max(0.1f, seconds);
+}
+
+float DPSTracker::getWindowDuration() const
+{
+	return windowDuration;
+}

@@ -133,6 +133,13 @@ void Game::pollEvents()
 				}
 			}
 		}
+		else if (const auto* wheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>())
+		{
+			if (wheelScrolled->wheel == sf::Mouse::Wheel::Vertical) // only the vertical wheel scrolls tab content
+			{
+				tabbedPanel->handleMouseWheelScrolling(window->mapPixelToCoords(wheelScrolled->position), wheelScrolled->delta);
+			}
+		}
 		else if (const auto* textEntered = event->getIf<sf::Event::TextEntered>())
 		{
 			tabbedPanel->handleTextEntered(textEntered->unicode);
@@ -183,7 +190,7 @@ void Game::initFamiliar(FamiliarName name)
 
 void Game::initAchievements()
 {
-	achievementManager = new AchievementManager(hero, statistics);
+	achievementManager = new AchievementManager(hero, statistics, familiar, itemManager); // now takes familiar + itemManager too
 }
 
 void Game::initSaveIndicator()
@@ -239,6 +246,7 @@ void Game::update()
 	if (goldEarned > BigNumber(0))
 	{
 		hero->gainCurrency(goldEarned);
+		statistics->recordGoldEarned(goldEarned); // feeds the "Gold Rush" achievement
 	}
 
 	familiar->update(dt); // also advances any in-flight projectiles
@@ -260,17 +268,20 @@ void Game::render()
 {
 	window->clear();
 
-	// Collect every actor that stands on the ground (hero, familiar, enemy) so Stage can interleave them with the
-	// decorations back-to-front by depth - a tree below an actor covers its feet, a tree above it stays behind.
 	std::vector<Stage::DepthActor> actors;
 	actors.push_back({ hero->getGroundY(), [this]() { hero->draw(window); } });
-	if (familiar) actors.push_back({ familiar->getGroundY(), [this]() { familiar->draw(window); } }); // draw() no-ops while locked, but the entry keeps depth complete once it unlocks
+	if (familiar) actors.push_back({ familiar->getGroundY(), [this]() { familiar->draw(window); } });
 	if (enemySpawner->hasEnemy()) actors.push_back({ enemySpawner->getEnemyGroundY(), [this]() { enemySpawner->render(window); } });
 
-	stage->drawMap(window, actors);
+	std::vector<Stage::HudElement> hudElements;
+	hudElements.push_back({ [this]() { hero->drawHUD(window); } });
+	if (familiar) hudElements.push_back({ [this]() { familiar->drawHUD(window); } });
+	// hudElements.push_back({ [this]() { enemySpawner->drawHUD(window); } }); // once EnemySpawner splits out its damage/health text the same way
+
+	stage->drawMap(window, actors, hudElements);
 	itemBar->render(window);
 	tabbedPanel->render(window);
-	saveIndicator->render(window); // last, so it renders on top of everything else
+	saveIndicator->render(window); // last of all, on top of the UI panel too
 
 	window->display();
 }
@@ -538,9 +549,9 @@ void Game::saveToFile(const std::string& path)
 			ofs << "goldMultiplierCost=" << shopTab->getGoldMultiplierCost().toApproxDouble() << '\n';
 			ofs << "critChanceCost=" << shopTab->getCritChanceCost().toApproxDouble() << '\n';
 			ofs << "critDamageCost=" << shopTab->getCritDamageCost().toApproxDouble() << '\n';
-			ofs << "familiarPhysicalCost" << shopTab->getFamiliarPhysicalAttackCost().toApproxDouble() << '\n';
-			ofs << "familiarElementalCost" << shopTab->getFamiliarElementalAttackCost().toApproxDouble() << '\n';
-			ofs << "familiarCooldownCost" << shopTab->getFamiliarCooldownReductionCost().toApproxDouble() << '\n';
+			ofs << "familiarPhysicalCost=" << shopTab->getFamiliarPhysicalAttackCost().toApproxDouble() << '\n';
+			ofs << "familiarElementalCost=" << shopTab->getFamiliarElementalAttackCost().toApproxDouble() << '\n';
+			ofs << "familiarCooldownCost=" << shopTab->getFamiliarCooldownReductionCost().toApproxDouble() << '\n';
 		}
 
 		ofs.close();

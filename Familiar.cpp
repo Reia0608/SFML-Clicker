@@ -104,6 +104,11 @@ void Familiar::attackAnimation()
 	sprites->playAnimation("attack", true, "idle");   // plays once then returns to the idle animation
 }
 
+void Familiar::syncDPSTrackerWindow()
+{
+	familiarDPSTracker.setWindowDuration(attackInterval);
+}
+
 Familiar::Familiar(FamiliarType familiarType)
 {
 	name = familiarType.name;
@@ -114,6 +119,7 @@ Familiar::Familiar(FamiliarType familiarType)
 	initProjectileAnimation(familiarType.projectileAnimationAddress, familiarType.projectileSpriteSize, familiarType.projectileFrameTimerMax, familiarType.projectileFrameCount, familiarType.projectileScale, familiarType.projectileTravelDuration);
 	initCooldownIndicator();
 	initFamiliarDPSText();
+	syncDPSTrackerWindow();
 }
 
 Familiar::~Familiar()
@@ -139,12 +145,15 @@ void Familiar::update(float dt)
 	if (!unlocked) return;
 	if (attackCooldownRemaining > 0.0f) attackCooldownRemaining -= dt;
 	sprites->animate(dt);
+	familiarDPSTracker.update(dt);
+	updateFamiliarDPSText();
 
 	for (auto it = activeProjectiles.begin(); it != activeProjectiles.end(); )
 	{
 		bool arrived = it->update(dt);
 		if (arrived)
 		{
+			familiarDPSTracker.recordDamage(it->getDamage());
 			if (onProjectileHit) onProjectileHit(it->getDamage()); // Game applies the damage to whatever is currently at that spot
 			it = activeProjectiles.erase(it);
 		}
@@ -160,16 +169,21 @@ void Familiar::draw(sf::RenderWindow* window)
 	if (!unlocked) return;
 	window->draw(*sprites);
 
-	updateCooldownIndicator();
-	window->draw(cooldownRingTrack); // dim background ring, always visible
-	window->draw(cooldownRingProgress); // fills in clockwise from the top as the cooldown elapses
-	window->draw(*cooldownText); // remaining seconds, in the donuts's hole
-	window->draw(*familiarDPSText);
-
 	for (const auto& projectile : activeProjectiles)
 	{
 		projectile.draw(window);
 	}
+}
+
+void Familiar::drawHUD(sf::RenderWindow* window)
+{
+	if (!unlocked) return;
+
+	updateCooldownIndicator();
+	window->draw(cooldownRingTrack);
+	window->draw(cooldownRingProgress);
+	window->draw(*cooldownText);
+	window->draw(*familiarDPSText);
 }
 
 bool Familiar::isUnlocked() const
@@ -227,10 +241,13 @@ void Familiar::increaseElementalAttack(BigNumber amount)
 
 void Familiar::reduceAttackCooldown(float amount)
 {
-	if (attackInterval - amount > 0)
-	{
-		attackInterval = attackInterval - amount;
-	}
+	attackInterval = std::max(minAttackInterval, attackInterval - amount);
+	syncDPSTrackerWindow();
+}
+
+bool Familiar::isAttackIntervalAtMinimum() const
+{
+	return attackInterval <= minAttackInterval;
 }
 
 void Familiar::setName(FamiliarName name)
@@ -261,12 +278,13 @@ float Familiar::getAttackInterval() const
 void Familiar::setAttackInterval(float seconds)
 {
 	attackInterval = seconds;
+	syncDPSTrackerWindow();
 }
 
 
 void Familiar::updateFamiliarDPSText()
 {
-	familiarDPSText->setString("Familiar DPS: " + (getPhysicalAttackPower() + getElementalAttackPower()).toString());
+	familiarDPSText->setString("Familiar DPS: " + getFamiliarDPS().toString());
 	LayoutManager::applyAnchor(*familiarDPSText, Anchor::BottomRight, { -10.0f, -120.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
 }
 

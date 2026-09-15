@@ -143,6 +143,9 @@ void OptionsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAr
 		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin + (buttonHeight + spacing) * 4 },
 		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
 	);
+
+	// total height of the button stack in its unscrolled layout (5 buttons), so TabbedPanel can enable scrolling if it overflows
+	contentHeight = margin * 2.0f + 5 * (buttonHeight + spacing) - spacing;
 }
 
 void OptionsTab::render(sf::RenderWindow* window)

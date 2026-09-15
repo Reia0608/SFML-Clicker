@@ -108,6 +108,11 @@ void ShopTab::onBuyFamiliarCooldownReductionClicked()
 		familiarCooldownReductionCost = familiarCooldownReductionCost * BigNumber(1.5);
 		updateFamiliarCooldownButtonLabel();
 		familiar->updateFamiliarDPSText();
+
+		if (familiar->isAttackIntervalAtMinimum())
+		{
+			buyFamiliarCooldownReductionButton->setEnabled(false); // max reduction reached - hide permanently
+		}
 	}
 }
 
@@ -198,6 +203,9 @@ void ShopTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaS
 		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin + (buttonHeight + spacing) * 7 },
 		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
 	);
+
+	// total height of the button stack in its unscrolled layout (8 buttons), so TabbedPanel can enable scrolling if it overflows
+	contentHeight = margin * 2.0f + 8 * (buttonHeight + spacing) - spacing;
 }
 
 void ShopTab::render(sf::RenderWindow* window)
@@ -360,6 +368,10 @@ void ShopTab::setFamiliarButtonsActive(bool enable)
 	buyFamiliarCooldownReductionButton->setEnabled(enable);
 }
 
+void ShopTab::setFamiliarCooldownButtonActive(bool enable)
+{
+	buyFamiliarCooldownReductionButton->setEnabled(enable);
+}
 
 void ShopTab::refreshLabels()
 {
@@ -371,6 +383,11 @@ void ShopTab::refreshLabels()
 	updateFamiliarPhysicalAttackButtonLabel();
 	updateFamiliarElementalAttackButtonLabel();
 	updateFamiliarCooldownButtonLabel();
+
+	if (familiar->isAttackIntervalAtMinimum())
+	{
+		buyFamiliarCooldownReductionButton->setEnabled(false);
+	}
 }
 
 void ShopTab::resetPricesToDefault()

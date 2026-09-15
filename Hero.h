@@ -47,7 +47,8 @@ class Hero
 		void updateCurrencyPulse(float dt);
 		void onResize();
 		void updateDPS(float dt);
-		void draw(sf::RenderWindow* window);
+		void draw(sf::RenderWindow* window);     // sprite only - depth-sorted with decorations
+		void drawHUD(sf::RenderWindow* window);  // currency/DPS/click-damage text - HUD layer
 
 		float getGroundY() const { return sprites->getGroundY(); } // Y of the hero's feet on the ground - Stage uses this to depth-sort him against decorations
 		void playAttack1Animation();

@@ -10,6 +10,7 @@ class AchievementsTab : public TabContent
 	private:
 		AchievementManager* achievementManager;   // non-owning
 		bool hasUnseenUnlock = false;
+		float contentHeight = 0.0f; // total height of the unscrolled layout, measured in onResize (see getContentHeight)
 
 		struct AchievementLine
 		{
@@ -31,6 +32,8 @@ class AchievementsTab : public TabContent
 		void onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize) override;
 		void render(sf::RenderWindow* window) override;
 		bool handleClick(sf::Vector2f pos) override;
+
+		float getContentHeight() const override { return contentHeight; }
 
 		bool hasPendingNotification() const override { return hasUnseenUnlock; }
 		void markPending() { hasUnseenUnlock = true; } // call from AchievementManager::onAchievementUnlocked

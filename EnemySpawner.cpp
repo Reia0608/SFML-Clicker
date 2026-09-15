@@ -85,6 +85,7 @@ BigNumber EnemySpawner::finishEnemyDefeat()
 		itemManager->rollBossDrop();
 		currentStageNumber++;
 		enemyIndexInStage = 0;
+		statistics->recordBossKillTime(enemy->getBossTimeElapsed());
 
 		if (onBossEncounterEndedCallback)
 		{
@@ -124,7 +125,7 @@ void EnemySpawner::onResize()
 {
 	if (enemy != nullptr)
 	{
-		enemy->getSprites()->setPosition({ gameAreaWidth / 2.0f, 300.0f });
+		enemy->getSprites()->setPosition({ gameAreaWidth / 2.0f, 250.0f });
 		enemy->refreshHealthBar();
 	}
 }

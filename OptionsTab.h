@@ -18,6 +18,8 @@ class OptionsTab : public TabContent
 		UIButton* saveButton;
 		UIButton* loadButton;
 
+		float contentHeight = 0.0f; // total height of the button stack in its unscrolled layout, measured in onResize (see getContentHeight)
+
 		void updateWindowModeLabel();
 		void updateResolutionLabel();
 		void updateDeathAnimationsLabel();
@@ -35,6 +37,9 @@ class OptionsTab : public TabContent
 		void onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize) override;
 		void render(sf::RenderWindow* window) override;
 		bool handleClick(sf::Vector2f pos) override;
+
+		float getContentHeight() const override { return contentHeight; }
+
 		void enableLoadButton(bool enable);
 		void refreshLabels();
 };

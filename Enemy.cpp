@@ -327,3 +327,8 @@ void Enemy::drawBossTimer(sf::RenderWindow* window)
 	window->draw(timerBarFill);
 	window->draw(*timerText);
 };
+
+float Enemy::getBossTimeElapsed() const
+{
+	return bossTimeLimit - bossTimeRemaining;
+};

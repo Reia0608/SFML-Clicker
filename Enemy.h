@@ -70,4 +70,6 @@ class Enemy : public EnemyType
 		void updateBossTimer(float dt);
 		bool isBossTimeUp() const;
 		void drawBossTimer(sf::RenderWindow* window);
+
+		float getBossTimeElapsed() const; // seconds since the boss encounter started (bossTimeLimit - bossTimeRemaining)
 };

@@ -23,6 +23,8 @@ class ShopTab : public TabContent
 		UIButton* buyFamiliarUpgradeElementalAttackButton;
 		UIButton* buyFamiliarCooldownReductionButton;
 
+		float contentHeight = 0.0f; // total height of the button stack in its unscrolled layout (see getContentHeight)
+
 		BigNumber attackUpgradeCost = BigNumber(50);
 		BigNumber attackUpgradeAmount = BigNumber(1);
 		BigNumber goldMultiplierCost = BigNumber(30);
@@ -65,6 +67,8 @@ class ShopTab : public TabContent
 		void onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize) override;
 		void render(sf::RenderWindow* window) override;
 		bool handleClick(sf::Vector2f pos) override;
+
+		float getContentHeight() const override { return contentHeight; }
 		void updateCritChanceButtonLabel();
 		void onBuyCritChanceClicked();
 		void updateCritDamageButtonLabel();
@@ -91,6 +95,7 @@ class ShopTab : public TabContent
 
 		void setFamiliarButtonActive(bool enable);
 		void setFamiliarButtonsActive(bool enable);
+		void setFamiliarCooldownButtonActive(bool enable);
 
 		void refreshLabels(); // re-reads all costs into the button labels, and the familiar button's visibility - call after restoring saved state
 		void resetPricesToDefault(); // debug only, restores the four costs to their starting values (does not touch familiar unlock status)

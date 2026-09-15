@@ -63,6 +63,8 @@ void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f cont
 	const float buttonWidth = 160.0f; // should it not be a variable to better adapt the buttons while resizing the window?
 	const float buttonHeight = 30.0f; // same as above.
 
+	contentHeight = margin + lines.size() * entryHeight; // total height of the unscrolled layout, so TabbedPanel can enable scrolling if it overflows
+
 	const auto& achievements = achievementManager->getAchievements();
 
 	for (size_t i = 0; i < lines.size() && i < achievements.size(); i++)

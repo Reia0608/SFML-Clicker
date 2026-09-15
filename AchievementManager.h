@@ -3,18 +3,24 @@
 #include "Achievement.h"
 #include "Hero.h"
 #include "Statistics.h"
+#include "Familiar.h"
+#include "ItemManager.h"
 
 class AchievementManager
 {
 	private:
 		Hero* hero;             // non-owning
 		Statistics* statistics; // non-owning
+		Familiar* familiar;     // non-owning
+		ItemManager* itemManager; // non-owning
 		std::vector<Achievement> achievements;
 
 		void initAchievements();
+		void addThresholdAchievement(const std::string& name, const std::string& description,
+			std::function<int()> getter, int threshold, BigNumber reward); // helper for simple ">= threshold" achievements
 
 	public:
-		AchievementManager(Hero* hero, Statistics* statistics);
+		AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager);
 
 		void update();
 		const std::vector<Achievement>& getAchievements() const;

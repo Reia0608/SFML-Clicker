@@ -86,3 +86,26 @@ float Statistics::getPlayTimeSeconds() const
 {
 	return playTimeSeconds; 
 }
+
+void Statistics::recordGoldEarned(BigNumber amount)
+{
+	totalGoldEarned = totalGoldEarned + amount;
+}
+
+BigNumber Statistics::getTotalGoldEarned() const
+{
+	return totalGoldEarned;
+}
+
+void Statistics::recordBossKillTime(float seconds)
+{
+	if (fastestBossKillSeconds < 0.0f || seconds < fastestBossKillSeconds)
+	{
+		fastestBossKillSeconds = seconds;
+	}
+}
+
+float Statistics::getFastestBossKillSeconds() const
+{
+	return fastestBossKillSeconds;
+}

@@ -1,5 +1,6 @@
 #pragma once
 #include "stdafx.h"
+#include "BigNumber.h"
 
 class Statistics
 {
@@ -11,6 +12,8 @@ private:
 	int totalClicks = 0;
 	float playTimeSeconds = 0.0f;
 	int criticalHitsLanded = 0;
+	BigNumber totalGoldEarned = BigNumber(0);         // lifetime gold earned, never decreases (unlike Hero::currency)
+	float fastestBossKillSeconds = -1.0f;             // -1 = no boss defeated yet; otherwise the fastest kill time recorded
 
 public:
 	void recordEnemyDefeated();
@@ -32,4 +35,12 @@ public:
 	int getCriticalHitsLanded() const;
 
 	float getPlayTimeSeconds() const;
+
+	// gold milestone tracking
+	void recordGoldEarned(BigNumber amount);     // call every time the hero gains gold (adds, never subtracts)
+	BigNumber getTotalGoldEarned() const;
+
+	// speed-boss tracking
+	void recordBossKillTime(float seconds);      // keeps the fastest (lowest) time seen; ignores slower runs
+	float getFastestBossKillSeconds() const;     // returns -1.0f if no boss has been defeated yet
 };
