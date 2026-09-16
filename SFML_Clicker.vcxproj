@@ -118,6 +118,7 @@
     <ClCompile Include="Textures.cpp" />
     <ClCompile Include="Times.cpp" />
     <ClCompile Include="UIButton.cpp" />
+    <ClCompile Include="UnlockManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Achievement.h" />
@@ -126,7 +127,6 @@
     <ClInclude Include="Anchor.h" />
     <ClInclude Include="DebugTab.h" />
     <ClInclude Include="Elements.h" />
-    <ClInclude Include="FamiliarAttackAnimation.h" />
     <ClInclude Include="BigNumber.h" />
     <ClInclude Include="DPSTracker.h" />
     <ClInclude Include="Enemy.h" />
@@ -164,6 +164,7 @@
     <ClInclude Include="Textures.h" />
     <ClInclude Include="Times.h" />
     <ClInclude Include="UIButton.h" />
+    <ClInclude Include="UnlockManager.h" />
     <ClInclude Include="WindowMode.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

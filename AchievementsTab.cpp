@@ -12,32 +12,24 @@ void AchievementsTab::rebuildLines()
 	}
 	lines.clear();
 
-	for (const auto& achievement : achievementManager->getAchievements())
+	for (const Achievement* achievement : achievementManager->getVisibleAchievements())
 	{
 		AchievementLine line;
+		line.nameText = new Text(achievement->name, "Fonts/arial.ttf");
+		line.descriptionText = new Text(achievement->description + " (Reward: " + achievement->rewardLabel + ")", "Fonts/arial.ttf");
 
-		line.nameText = new Text(achievement.name, "Fonts/arial.ttf");
-		line.nameText->setCharacterSize(16);
-		line.nameText->setOutlineColor(sf::Color::Black);
-		line.nameText->setOutlineThickness(1.0f);
-
-		line.descriptionText = new Text(achievement.description + " (Reward: " + achievement.goldReward.toString() + " Gold)", "Fonts/arial.ttf");
-		line.descriptionText->setCharacterSize(12);
-		line.descriptionText->setFillColor(sf::Color(180, 180, 180));
-
-		std::string name = achievement.name; // captured by value for the lambda below
-		line.claimButton = new UIButton("Claim " + achievement.goldReward.toString() + " Gold", [this, name]() { achievementManager->claimReward(name); });
-
+		std::string name = achievement->name;
+		line.claimButton = new UIButton("Claim " + achievement->rewardLabel, [this, name]() { achievementManager->claimReward(name); });
 		lines.push_back(line);
 	}
 }
 
 void AchievementsTab::refreshClaimButtons()
 {
-	const auto& achievements = achievementManager->getAchievements();
-	for (size_t i = 0; i < lines.size() && i < achievements.size(); i++)
+	auto visible = achievementManager->getVisibleAchievements();
+	for (size_t i = 0; i < lines.size() && i < visible.size(); i++)
 	{
-		lines[i].claimButton->setEnabled(achievements[i].unlocked && !achievements[i].claimed); // hidden until earned, hidden again once claimed
+		lines[i].claimButton->setEnabled(visible[i]->unlocked && !visible[i]->claimed);
 	}
 }
 
@@ -65,7 +57,7 @@ void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f cont
 
 	contentHeight = margin + lines.size() * entryHeight; // total height of the unscrolled layout, so TabbedPanel can enable scrolling if it overflows
 
-	const auto& achievements = achievementManager->getAchievements();
+	const auto& achievements = achievementManager->getVisibleAchievements();
 
 	for (size_t i = 0; i < lines.size() && i < achievements.size(); i++)
 	{
@@ -82,24 +74,27 @@ void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f cont
 
 void AchievementsTab::render(sf::RenderWindow* window)
 {
-	hasUnseenUnlock = false; // this tab is only rendered while active, so being drawn means it's being seen
+	hasUnseenUnlock = false;
+
+	auto visible = achievementManager->getVisibleAchievements(); // NEW
+	if (visible.size() != lines.size())
+	{
+		rebuildLines(); // a previously-hidden achievement just became visible — resync line count
+	}
 
 	refreshClaimButtons();
 
-	const auto& achievements = achievementManager->getAchievements();
-
-	for (size_t i = 0; i < lines.size() && i < achievements.size(); i++)
+	for (size_t i = 0; i < lines.size() && i < visible.size(); i++)
 	{
-		const Achievement& achievement = achievements[i];
-		sf::Color color = achievement.claimed ? sf::Color(120, 220, 120) // green = claimed
-			: achievement.unlocked ? sf::Color(230, 210, 120) // gold = unlocked, waiting to be claimed
-			: sf::Color(150, 150, 150); // grey = locked
+		const Achievement& achievement = *visible[i]; // CHANGED
+		sf::Color color = achievement.claimed ? sf::Color(120, 220, 120)
+			: achievement.unlocked ? sf::Color(230, 210, 120)
+			: sf::Color(150, 150, 150);
 
 		lines[i].nameText->setFillColor(color);
-
 		window->draw(*lines[i].nameText);
 		window->draw(*lines[i].descriptionText);
-		lines[i].claimButton->render(window); // no-op while hidden/disabled (see UIButton::render)
+		lines[i].claimButton->render(window);
 	}
 }
 

@@ -201,6 +201,11 @@ void Hero::increaseAttackPower(BigNumber amount)
 	attackPower = attackPower + amount;
 }
 
+void Hero::setGoldMultiplier(double value)
+{
+	goldMultiplier = value;
+}
+
 bool Hero::isCritUnlocked() const 
 { 
 	return critUnlocked;

@@ -21,6 +21,7 @@
 #include "FamiliarType.h"
 #include "DebugTab.h"
 #include "AchievementsTab.h"
+#include "UnlockManager.h"
 
 
 class Game : public IWindowController, public ISaveable, public IDebugController
@@ -32,10 +33,13 @@ private:
 		FamiliarType(BabyFireDragon, // 0
 		"Baby Fire Dragon",
 		"Fire",
+		Age::Baby,
 		"Textures/Familiars/Dragons/sprites/babydragon_sheets/babydragon_red_idle.png",
 		0.15f,
 		"Textures/Familiars/Dragons/sprites/babydragon_sheets/babydragon_red_attack1.png",
 		0.10f,
+		"",	// does not have a second attack
+		0.0f,
 		{96, 96},
 		"Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png",
 		0.10f,
@@ -43,6 +47,25 @@ private:
 		6,     // sheet is 360x60px = 6 frames of 60x60
 		2.5f,  // scale - tweak this to make the fireball bigger/smaller on screen
 		1.8f), // travelDuration in seconds - tweak this to make it fly slower/faster
+		
+		FamiliarType(FireDragon, // 1
+		"Fire Dragon",
+		"Fire",
+		Age::Juvenile,
+		"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_idle.png",
+		0.15f,
+		"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_attack1.png",
+		0.10f,
+		"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_attack2.png",
+		1.0f,
+		{240, 224},
+		"Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png",
+		0.10f,
+		{60, 60},
+		6,     // sheet is 360x60px = 6 frames of 60x60
+		4.0f, // scale - tweak this to make the fireball bigger/smaller on screen
+		1.8f), // travelDuration in seconds - tweak this to make it fly slower/faster
+
 		// add more familiars here later
 	};
 
@@ -68,6 +91,7 @@ private:
 	Familiar* familiar = nullptr; // owned by Game (unlike shopTab/optionsTab, not a TabContent)
 	DebugTab* debugTab = nullptr;
 	AchievementsTab* achievementsTab = nullptr; // non-owning - owned by tabbedPanel, kept here to wire the unlock->blink callback
+	UnlockManager* unlockManager;
 
 	// Autosave / save indicator
 	sf::Font saveIndicatorFont;
@@ -91,10 +115,9 @@ private:
 	void initUI();
 	void initAchievements();
 	void initSaveIndicator();
+	void initUnlockManager();
 
 	void handleBossEncounterEnded(bool wasDefeated);
-
-	void setFamiliarButtonsActive(bool enable);
 
 	void onWindowResized(sf::Vector2u newSize);
 	void pollEvents();

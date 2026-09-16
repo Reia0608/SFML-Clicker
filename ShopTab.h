@@ -6,6 +6,8 @@
 #include "BigNumber.h"
 #include "Statistics.h"
 #include "Familiar.h"
+#include "UnlockManager.h"
+
 
 class ShopTab : public TabContent
 {
@@ -13,6 +15,7 @@ class ShopTab : public TabContent
 		Hero* hero;   // non-owning — Hero belongs to Game, not ShopTab
 		Familiar* familiar; // non-owning
 		Statistics* statistics; // non-owning
+		UnlockManager* unlockManager; // non-owning
 
 		UIButton* buyAttackButton;
 		UIButton* buyGoldMultiplierButton;
@@ -22,6 +25,15 @@ class ShopTab : public TabContent
 		UIButton* buyFamiliarUpgradePhysicalAttackButton;
 		UIButton* buyFamiliarUpgradeElementalAttackButton;
 		UIButton* buyFamiliarCooldownReductionButton;
+
+		struct ShopButtonEntry // pairs each button with the rule that decides whether it currently takes up UI space
+		{
+			UIButton* button;
+			std::function<bool()> isVisible;
+		};
+		std::vector<ShopButtonEntry> buttonEntries; // ordered top-to-bottom, built once in the constructor
+		sf::Vector2f lastContentAreaOrigin;          // cached so relayoutButtons() can be called outside onResize
+		sf::Vector2f lastContentAreaSize;
 
 		float contentHeight = 0.0f; // total height of the button stack in its unscrolled layout (see getContentHeight)
 
@@ -45,6 +57,9 @@ class ShopTab : public TabContent
 		BigNumber critDamageCost = BigNumber(150);
 		double critDamageIncreaseAmount = 0.10;
 
+		int goldMultiplierUpgradesPurchased = 0; // needed to retroactively rebalance the multiplier when the increase amount changes
+
+		void relayoutButtons(); // positions only currently-visible buttons, called from onResize() and after any purchase that could change visibility
 		void updateButtonLabel();
 		void onBuyAttackClicked();
 		void updateGoldMultiplierButtonLabel();
@@ -60,8 +75,10 @@ class ShopTab : public TabContent
 		void updateFamiliarCooldownButtonLabel();
 		void onBuyFamiliarCooldownReductionClicked();
 
+		std::string formatCooldownAmount(double amount);
+
 	public:
-		ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar);
+		ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockManager* unlockManager);
 		~ShopTab();
 
 		void onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize) override;
@@ -74,6 +91,9 @@ class ShopTab : public TabContent
 		void updateCritDamageButtonLabel();
 		void onBuyCritDamageClicked();
 
+		void increaseGoldMultiplierGain(float amount); // called once when "Hoarder" unlocks: doubles goldMultiplierIncreaseAmount permanently,
+		// and rebalances hero's current multiplier as if every past purchase had used the new amount
+
 		// for save/ load
 		// Persistence: current prices aren't derivable from Hero's stats alone (e.g. attack power
 		// can come from other sources later), so they need to be saved/restored explicitly.
@@ -85,6 +105,10 @@ class ShopTab : public TabContent
 		BigNumber getFamiliarElementalAttackCost() const;
 		BigNumber getFamiliarCooldownReductionCost() const;
 
+		// persistence for the gold-multiplier upgrade's scaling state (affected by the Hoarder achievement)
+		double getGoldMultiplierIncreaseAmount() const;
+		int getGoldMultiplierUpgradesPurchased() const;
+
 		void setAttackUpgradeCost(BigNumber cost);
 		void setGoldMultiplierCost(BigNumber cost);
 		void setCritChanceCost(BigNumber cost);
@@ -93,10 +117,10 @@ class ShopTab : public TabContent
 		void setFamiliarElementalAttackCost(BigNumber cost);
 		void setFamiliarCooldownReductionCost(BigNumber cost);
 
-		void setFamiliarButtonActive(bool enable);
-		void setFamiliarButtonsActive(bool enable);
-		void setFamiliarCooldownButtonActive(bool enable);
+		void setGoldMultiplierIncreaseAmount(double value); // restores saved per-purchase gain (e.g. after Hoarder doubled it)
+		void setGoldMultiplierUpgradesPurchased(int count);  // restores saved purchase count, used only for future rebalancing math
 
 		void refreshLabels(); // re-reads all costs into the button labels, and the familiar button's visibility - call after restoring saved state
 		void resetPricesToDefault(); // debug only, restores the four costs to their starting values (does not touch familiar unlock status)
+		void refreshVisibility(); // public wrapper around relayoutButtons(), for exactly that load-time case
 };

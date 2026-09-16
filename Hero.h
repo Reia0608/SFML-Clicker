@@ -61,6 +61,8 @@ class Hero
 		bool trySpendCurrency(BigNumber amount);
 		void increaseAttackPower(BigNumber amount);
 
+		void setGoldMultiplier(double value); // absolute set — used to rebalance the multiplier when the per-purchase increase amount changes (e.g. Hoarder achievement)
+
 		bool isCritUnlocked() const;
 		double getCritChance() const;
 		double getCritDamageMultiplier() const;

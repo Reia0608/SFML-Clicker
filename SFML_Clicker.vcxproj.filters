@@ -100,6 +100,9 @@
     <ClCompile Include="TextInputField.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="UnlockManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -213,9 +216,6 @@
     <ClInclude Include="Familiar.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FamiliarAttackAnimation.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="FamiliarAbility.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -235,6 +235,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Elements.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UnlockManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

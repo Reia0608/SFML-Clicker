@@ -151,14 +151,31 @@ void Game::initUI()
 {
 	itemBar = new ItemBar(itemManager);
 	tabbedPanel = new TabbedPanel();
-	shopTab = new ShopTab(hero, statistics, familiar);
+	shopTab = new ShopTab(hero, statistics, familiar, unlockManager);
 	tabbedPanel->addTab("Shop", shopTab);
 
 	achievementsTab = new AchievementsTab(achievementManager);
 	tabbedPanel->addTab("Achievements", achievementsTab);
-	achievementManager->onAchievementUnlocked = [this](const Achievement&)
+	achievementManager->onAchievementUnlocked = [this](const Achievement& achievement)
 	{
 		achievementsTab->markPending();
+	};
+
+	achievementManager->onAchievementClaimed = [this](const Achievement& achievement) // NEW
+	{
+		if (achievement.name == "Hoarder")
+		{
+			shopTab->increaseGoldMultiplierGain(2.0f);
+		}
+
+		/*if (achievement.name == "Familiar Bond")
+		{
+			unlockManager->unlock();
+		}*/
+
+		// This is the single place to wire "claiming X unlocks feature Y" — for both shop buttons and achievement chains:
+		// if (achievement.name == "Big Spender") unlockManager->unlock("EliteSpenderUnlocked");
+		// if (achievement.name == "Veteran Slayer") unlockManager->unlock("SomeShopUpgradeKey");
 	};
 
 	tabbedPanel->addTab("Statistics", new StatisticsTab(hero, statistics));
@@ -190,7 +207,7 @@ void Game::initFamiliar(FamiliarName name)
 
 void Game::initAchievements()
 {
-	achievementManager = new AchievementManager(hero, statistics, familiar, itemManager); // now takes familiar + itemManager too
+	achievementManager = new AchievementManager(hero, statistics, familiar, itemManager, unlockManager);
 }
 
 void Game::initSaveIndicator()
@@ -200,6 +217,11 @@ void Game::initSaveIndicator()
 		std::cout << "Warning: could not load font for SaveIndicator" << std::endl;
 	}
 	saveIndicator = new SaveIndicator(saveIndicatorFont);
+}
+
+void Game::initUnlockManager()
+{
+	unlockManager = new UnlockManager();
 }
 
 void Game::handleBossEncounterEnded(bool wasDefeated)
@@ -339,6 +361,7 @@ Game::Game()
 	initFamiliar(BabyFireDragon);
 	initStatistics();
 	initItemManager(); // needs to be called before initEnemySpawner()/initUI()
+	initUnlockManager(); // before initAchievements()
 	initAchievements(); // needs to be called before initEnemySpawner() and after initHero() and initStatistics()
 	initEnemySpawner();
 	initUI();
@@ -366,6 +389,7 @@ Game::~Game()
 	delete itemManager;
 	delete saveIndicator;
 	delete familiar;
+	delete unlockManager;
 }
 
 void Game::running()
@@ -532,6 +556,13 @@ void Game::saveToFile(const std::string& path)
 			ofs << "ach=" << a.name << "|" << (a.unlocked ? 1 : 0) << "|" << (a.claimed ? 1 : 0) << '\n';
 		}
 
+		// Unlocks (ShopTab Buttons, new Achievements etc...)
+		ofs << "[Unlocks]\n";
+		for (const auto& key : unlockManager->getUnlockedFeatures())
+		{
+			ofs << "feature=" << key << '\n';
+		}
+
 		// Items (store counts if possible)
 		ofs << "[Items]\n";
 		int itemCount = itemManager->getItemCount();
@@ -552,6 +583,8 @@ void Game::saveToFile(const std::string& path)
 			ofs << "familiarPhysicalCost=" << shopTab->getFamiliarPhysicalAttackCost().toApproxDouble() << '\n';
 			ofs << "familiarElementalCost=" << shopTab->getFamiliarElementalAttackCost().toApproxDouble() << '\n';
 			ofs << "familiarCooldownCost=" << shopTab->getFamiliarCooldownReductionCost().toApproxDouble() << '\n';
+			ofs << "goldMultiplierIncreaseAmount=" << shopTab->getGoldMultiplierIncreaseAmount() << '\n';
+			ofs << "goldMultiplierUpgradesPurchased=" << shopTab->getGoldMultiplierUpgradesPurchased() << '\n';
 		}
 
 		ofs.close();
@@ -619,6 +652,9 @@ void Game::loadFromFile(const std::string& path)
 		std::vector<SavedAchievement> achievementsSaved;
 		std::vector<int> itemCounts;
 
+		// Unlocks
+		std::vector<std::string> unlockedFeaturesSaved;
+
 		// Defaults to current values, so older save files without a [Shop] section leave prices untouched
 		double shopAttackUpgradeCost = shopTab->getAttackUpgradeCost().toApproxDouble();
 		double shopGoldMultiplierCost = shopTab->getGoldMultiplierCost().toApproxDouble();
@@ -627,6 +663,8 @@ void Game::loadFromFile(const std::string& path)
 		double shopFamiliarPhysicalAttackCost = shopTab->getFamiliarPhysicalAttackCost().toApproxDouble();
 		double shopFamiliarElementalAttackCost = shopTab->getFamiliarElementalAttackCost().toApproxDouble();
 		double shopFamiliarCooldownCost = shopTab->getFamiliarCooldownReductionCost().toApproxDouble();
+		double shopGoldMultiplierIncreaseAmount = shopTab->getGoldMultiplierIncreaseAmount();
+		int shopGoldMultiplierUpgradesPurchased = shopTab->getGoldMultiplierUpgradesPurchased();
 
 		while (std::getline(ifs, line))
 		{
@@ -692,6 +730,10 @@ void Game::loadFromFile(const std::string& path)
 					}
 				}
 			}
+			else if (section == "Unlocks")
+			{
+				if (key == "feature") unlockedFeaturesSaved.push_back(value);
+			}
 			else if (section == "Items")
 			{
 				if (key == "count")
@@ -715,6 +757,8 @@ void Game::loadFromFile(const std::string& path)
 				else if (key == "familiarPhysicalCost") shopFamiliarPhysicalAttackCost = std::stod(value);
 				else if (key == "familiarElementalCost") shopFamiliarElementalAttackCost = std::stod(value);
 				else if (key == "familiarCooldownCost") shopFamiliarCooldownCost = std::stod(value);
+				else if (key == "goldMultiplierIncreaseAmount") shopGoldMultiplierIncreaseAmount = std::stod(value);
+				else if (key == "goldMultiplierUpgradesPurchased") shopGoldMultiplierUpgradesPurchased = std::stoi(value);
 			}
 		}
 
@@ -785,8 +829,7 @@ void Game::loadFromFile(const std::string& path)
 		if (familiar && familiarUnlocked && !familiar->isUnlocked())
 		{
 			familiar->unlock();
-			shopTab->setFamiliarButtonActive(false); // remove shop button if unlocked
-			shopTab->setFamiliarButtonsActive(true); // enable the familiar upgrade buttons
+			shopTab->refreshVisibility(); // replaces setFamiliarButtonActive(false) / setFamiliarButtonsActive(true)
 			familiar->setPhysicalAttackPower(BigNumber(familiarPhysicalAttackPower));
 			familiar->setElementalAttackPower(BigNumber(familiarElementalAttackPower));
 			familiar->setAttackInterval(familiarAttackInterval);
@@ -832,6 +875,12 @@ void Game::loadFromFile(const std::string& path)
 			for (int i = curCrits; i < criticalHitsLanded; ++i) statistics->recordCriticalHit();
 		}
 
+		// Unlocks
+		for (const auto& featureKey : unlockedFeaturesSaved)
+		{
+			unlockManager->restoreUnlocked(featureKey);
+		}
+
 		// Achievements
 		for (const auto& saved : achievementsSaved)
 		{
@@ -855,6 +904,8 @@ void Game::loadFromFile(const std::string& path)
 			shopTab->setFamiliarPhysicalAttackCost(BigNumber(shopFamiliarPhysicalAttackCost));
 			shopTab->setFamiliarElementalAttackCost(BigNumber(shopFamiliarElementalAttackCost));
 			shopTab->setFamiliarCooldownReductionCost(BigNumber(shopFamiliarCooldownCost));
+			shopTab->setGoldMultiplierIncreaseAmount(shopGoldMultiplierIncreaseAmount);
+			shopTab->setGoldMultiplierUpgradesPurchased(shopGoldMultiplierUpgradesPurchased);
 			shopTab->refreshLabels();
 		}
 

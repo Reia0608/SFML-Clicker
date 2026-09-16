@@ -33,19 +33,19 @@ void AchievementManager::initAchievements()
 		[stats]() { return stats->getShopUpgradesPurchased(); }, 50, BigNumber(3000));
 
 	addThresholdAchievement("Click Master", "Click 5000 times",
-		[stats]() { return stats->getTotalClicks(); }, 5000, BigNumber(3000));
+		[stats]() { return stats->getTotalClicks(); }, 5000, BigNumber(100000));
 
 	addThresholdAchievement("Marathon Runner", "Play for 1 hour",
-		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 3600, BigNumber(15000));
+		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 3600, BigNumber(500000));
 
 	addThresholdAchievement("Endurance", "Play for 5 hours",
-		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 18000, BigNumber(100000));
+		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 18000, BigNumber(10000000));
 
 	achievements.push_back(Achievement("Gold Rush", "Earn 100,000 total gold",
-		[stats]() { return stats->getTotalGoldEarned() >= BigNumber(100000); }, BigNumber(1000)));
+		[stats]() { return stats->getTotalGoldEarned() >= BigNumber(100000); }, BigNumber(50000)));
 
 	achievements.push_back(Achievement("Familiar Bond", "Summon your first familiar",
-		[fam]() { return fam->isUnlocked(); }, BigNumber(500)));
+		[fam]() { return fam->isUnlocked(); }, BigNumber(2000)));
 
 	achievements.push_back(Achievement("Speedrunner", "Defeat a boss in under 5 seconds",
 		[stats]() {
@@ -60,23 +60,29 @@ void AchievementManager::initAchievements()
 			return total >= 1;
 		}, BigNumber(300)));
 
-	achievements.push_back(Achievement("Hoarder", "Collect 3 items", // unlocking this also grants +1.0 gold multiplier, see update()
-		[items]() {
+	achievements.push_back(Achievement("Hoarder", "Collect 3 items",
+		[items]() 
+		{
 			int total = 0;
 			for (int i = 0; i < items->getItemCount(); i++) total += items->getInventoryCount(i);
-			return total >= 3;
-		}, BigNumber(1000)));
+			return total >= 3; 
+		},
+		BigNumber(1000), "1000 Gold + Gold Multiplier Gain x2 (retroactive)"));
+
+	achievements.push_back(Achievement("Elite Spender", "Purchase 100 shop upgrades",
+		[stats]() { return stats->getShopUpgradesPurchased() >= 100; }, BigNumber(10000),
+		"", "EliteSpenderUnlocked")); // requiredFeature — stays hidden until that key is unlocked
 }
 
 void AchievementManager::addThresholdAchievement(const std::string& name, const std::string& description,
-	std::function<int()> getter, int threshold, BigNumber reward)
+	std::function<int()> getter, int threshold, BigNumber reward, std::string requiredFeature)
 {
 	achievements.push_back(Achievement(name, description,
-		[getter, threshold]() { return getter() >= threshold; }, reward));
+		[getter, threshold]() { return getter() >= threshold; }, reward, "", requiredFeature));
 }
 
-AchievementManager::AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager)
-	: hero(hero), statistics(statistics), familiar(familiar), itemManager(itemManager)
+AchievementManager::AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager, UnlockManager* unlockManager)
+	: hero(hero), statistics(statistics), familiar(familiar), itemManager(itemManager), unlockManager(unlockManager)
 {
 	initAchievements();
 }
@@ -85,29 +91,35 @@ void AchievementManager::update()
 {
 	for (auto& achievement : achievements)
 	{
+		if (!achievement.requiredFeature.empty() && !unlockManager->isUnlocked(achievement.requiredFeature))
+			continue; // dormant until its prerequisite feature is unlocked — condition isn't even evaluated
+
 		if (!achievement.unlocked && achievement.condition())
 		{
 			achievement.unlocked = true;
-			hero->grantBonusGold(achievement.goldReward);
-
-			if (achievement.name == "Hoarder") // special-cased bonus effect for this achievement
-			{
-				hero->increaseGoldMultiplier(1.0);
-			}
 
 			if (onAchievementUnlocked)
 			{
 				onAchievementUnlocked(achievement);
 			}
-			// TODO: as soon as Items are implemented, ItemTab-Callback should be called here
-			// TODO: as soon as Shop unlocks are implemented, ShopTab-Callback should be called here
 		}
 	}
 }
 
 const std::vector<Achievement>& AchievementManager::getAchievements() const
 {
-	return achievements;
+	return achievements; // the full list, used by Game::saveToFile/loadFromFile
+}
+
+std::vector<const Achievement*> AchievementManager::getVisibleAchievements() const
+{
+	std::vector<const Achievement*> visible;
+	for (const auto& achievement : achievements)
+	{
+		if (achievement.requiredFeature.empty() || unlockManager->isUnlocked(achievement.requiredFeature))
+			visible.push_back(&achievement);
+	}
+	return visible;
 }
 
 void AchievementManager::setUnlocked(const std::string& name, bool unlocked)
@@ -133,6 +145,12 @@ bool AchievementManager::claimReward(const std::string& name)
 			achievement.claimed = true;
 
 			hero->grantBonusGold(achievement.goldReward);
+
+			if (onAchievementClaimed)
+			{
+				onAchievementClaimed(achievement);
+			}
+
 			// TODO: as soon as Items are implemented, ItemTab-Callback should be called here
 			// TODO: as soon as Shop unlocks are implemented, ShopTab-Callback should be called here
 			return true;

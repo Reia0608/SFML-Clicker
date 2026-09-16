@@ -11,6 +11,13 @@ enum FamiliarName
 	IceDragon,
 };
 
+enum Age
+{
+	Baby,
+	Juvenile,
+	Adult
+};
+
 inline sf::Vector2f windowSize = { 800.0f, 640.0f }; // width of the whole screen including gameAreaWidth and the UI part
 inline float itemBarWidth = 60.0f;
 inline float tabPanelWidth = 380.0f;
