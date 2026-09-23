@@ -96,6 +96,7 @@
     <ClCompile Include="Enemy.cpp" />
     <ClCompile Include="EnemySpawner.cpp" />
     <ClCompile Include="Familiar.cpp" />
+    <ClCompile Include="FamiliarTab.cpp" />
     <ClCompile Include="Fonts.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Hero.cpp" />
@@ -126,6 +127,8 @@
     <ClInclude Include="AchievementsTab.h" />
     <ClInclude Include="Anchor.h" />
     <ClInclude Include="DebugTab.h" />
+    <ClInclude Include="ElementalAffinity.h" />
+    <ClInclude Include="ElementalPower.h" />
     <ClInclude Include="Elements.h" />
     <ClInclude Include="BigNumber.h" />
     <ClInclude Include="DPSTracker.h" />
@@ -133,7 +136,8 @@
     <ClInclude Include="EnemySpawner.h" />
     <ClInclude Include="EnemyType.h" />
     <ClInclude Include="Familiar.h" />
-    <ClInclude Include="FamiliarAbility.h" />
+    <ClInclude Include="FamiliarAttack.h" />
+    <ClInclude Include="FamiliarTab.h" />
     <ClInclude Include="FamiliarType.h" />
     <ClInclude Include="Fonts.h" />
     <ClInclude Include="Game.h" />

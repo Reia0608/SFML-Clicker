@@ -8,11 +8,14 @@
 #include <cmath>
 
 
-void Familiar::initSprites(std::string idleAnimationAddress, float idleFrameTimerMax, std::string attack1AnimationAddress, float attack1FrameTimerMax, sf::Vector2u spriteSize)
+void Familiar::initSprites(std::string idleAnimationAddress, float idleFrameTimerMax, sf::Vector2u spriteSize, const std::vector<FamiliarAttack>& attackList)
 {
 	sprites = new Sprites();
 	sprites->addAnimation("idle", idleAnimationAddress, spriteSize, idleFrameTimerMax);
-	sprites->addAnimation("attack", attack1AnimationAddress, spriteSize, attack1FrameTimerMax);
+	for (const auto& attack : attackList)
+	{
+		sprites->addAnimation(attack.animationKey, attack.animationAddress, spriteSize, attack.animationFrameTimerMax);
+	}
 	sprites->setPosition({ 60.0f, windowSize.y / 2.0f }); // left side of the game area, facing the enemy. y position depends on unlocked amount of familiars, but for now we only have one familiar, so it's centered vertically
 	sprites->playAnimation("idle");
 }
@@ -26,22 +29,26 @@ void Familiar::initFamiliarDPSText()
 	updateFamiliarDPSText();
 }
 
-void Familiar::initProjectileAnimation(std::string projectileAnimationAddress, sf::Vector2u projectileSpriteSize, float projectileFrameTimerMax, int projectileFrameCount, float projectileScale, float projectileTravelDuration)
+void Familiar::setupAttacks(std::vector<FamiliarAttack> attackList)
 {
-	this->projectileFrameTimerMax = projectileFrameTimerMax;
-	this->projectileScale = projectileScale;
-	this->projectileTravelDuration = projectileTravelDuration;
-
-	// frameCount passed explicitly for clarity/robustness - Textures::Textures() auto-detects it
-	// from sheet width / frame width when 0 is passed, but being explicit avoids relying on that
-	// for sheets that might later include padding frames not meant for this animation.
-	projectileTexture = new Textures(projectileAnimationAddress, projectileSpriteSize, projectileFrameCount);
-	projectileTexture->setFrameTimerMax(projectileFrameTimerMax);
-	projectileTexture->setFrameTimer(projectileFrameTimerMax);
-	projectileTexture->setSmooth(false);
+	for (auto& attack : attackList)
+	{
+		attack.cooldownRemaining = 0.0f; // start ready
+		if (attack.isRanged)
+		{
+			// frameCount passed explicitly for clarity/robustness - Textures::Textures() auto-detects it
+			// from sheet width / frame width when 0 is passed, but being explicit avoids relying on that
+			// for sheets that might later include padding frames not meant for this animation.
+			attack.projectileTexture = new Textures(attack.projectileAnimationAddress, attack.projectileSpriteSize, attack.projectileFrameCount);
+			attack.projectileTexture->setFrameTimerMax(attack.projectileFrameTimerMax);
+			attack.projectileTexture->setFrameTimer(attack.projectileFrameTimerMax);
+			attack.projectileTexture->setSmooth(false);
+		}
+	}
+	attacks = std::move(attackList);
 }
 
-void Familiar::buildRingArc(sf::VertexArray& target, sf::Vector2f center, float innerRadius, float outerRadius, float startAngleDeg, float sweepAngleDeg, int maxSegments, sf::Color color) // New
+void Familiar::buildRingArc(sf::VertexArray& target, sf::Vector2f center, float innerRadius, float outerRadius, float startAngleDeg, float sweepAngleDeg, int maxSegments, sf::Color color)
 {
 	target.clear();
 	target.setPrimitiveType(sf::PrimitiveType::TriangleStrip);
@@ -81,17 +88,27 @@ void Familiar::initCooldownIndicator()
 	buildRingArc(cooldownRingTrack, center, cooldownRingInnerRadius, cooldownRingOuterRadius, -90.0f, 360.0f, cooldownRingSegments, sf::Color(50, 50, 50, 200));
 }
 
+float Familiar::getEffectiveCooldown(const FamiliarAttack& attack) const
+{
+	if (!attack.isAutoAttack) return attack.baseCooldown; // bonusCooldownReduction (ShopTab) only ever applies to auto-attacks
+	return std::max(attack.minCooldownLimit, attack.baseCooldown - bonusCooldownReduction);
+}
+
 void Familiar::updateCooldownIndicator()
 {
+	auto it = std::find_if(attacks.begin(), attacks.end(), [](const FamiliarAttack& a) { return a.isAutoAttack; });
+	if (it == attacks.end()) return; // this familiar has no auto-attack to show - ring stays at its static "track" appearance
+
 	sf::Vector2f center = sprites->getPosition() + sf::Vector2f(0.0f, cooldownRingOffsetY);
 
-	float progress = attackInterval > 0.0f ? 1.0f - (attackCooldownRemaining / attackInterval) : 1.0f; // 0 = just attacked, 1 = ready
+	float fullCooldown = getEffectiveCooldown(*it);
+	float progress = fullCooldown > 0.0f ? 1.0f - (it->cooldownRemaining / fullCooldown) : 1.0f; // 0 = just attacked, 1 = ready
 	progress = std::clamp(progress, 0.0f, 1.0f);
 
 	buildRingArc(cooldownRingProgress, center, cooldownRingInnerRadius, cooldownRingOuterRadius, -90.0f, 360.0f * progress, cooldownRingSegments, sf::Color(240, 140, 50));
 
 	std::ostringstream out;
-	out << std::fixed << std::setprecision(1) << std::max(0.0f, attackCooldownRemaining);
+	out << std::fixed << std::setprecision(1) << std::max(0.0f, it->cooldownRemaining);
 	cooldownText->setString(out.str());
 
 	sf::FloatRect textBounds = cooldownText->getLocalBounds();
@@ -99,35 +116,32 @@ void Familiar::updateCooldownIndicator()
 	cooldownText->setPosition(center);
 }
 
-void Familiar::attackAnimation()
-{
-	sprites->playAnimation("attack", true, "idle");   // plays once then returns to the idle animation
-}
-
 void Familiar::syncDPSTrackerWindow()
 {
-	familiarDPSTracker.setWindowDuration(attackInterval);
+	auto it = std::find_if(attacks.begin(), attacks.end(), [](const FamiliarAttack& a) { return a.isAutoAttack; });
+	familiarDPSTracker.setWindowDuration(it != attacks.end() ? getEffectiveCooldown(*it) : 5.0f); // fallback window for a familiar with only manual attacks
 }
 
 Familiar::Familiar(FamiliarType familiarType)
 {
 	name = familiarType.name;
-	std::string label = familiarType.label;
-	std::string type = familiarType.type;
-	// TODO needs to be extend later on with more Attributes
-	initSprites(familiarType.idleAnimationAddress, familiarType.idleFrameTimerMax, familiarType.attack1AnimationAddress, familiarType.attack1FrameTimerMax, familiarType.spriteSize);
-	initProjectileAnimation(familiarType.projectileAnimationAddress, familiarType.projectileSpriteSize, familiarType.projectileFrameTimerMax, familiarType.projectileFrameCount, familiarType.projectileScale, familiarType.projectileTravelDuration);
+	label = familiarType.label;
+	type = familiarType.type;
+
+	initSprites(familiarType.idleAnimationAddress, familiarType.idleFrameTimerMax, familiarType.spriteSize, familiarType.attacks);
+	setupAttacks(familiarType.attacks);
+	syncDPSTrackerWindow();
+
 	initCooldownIndicator();
 	initFamiliarDPSText();
-	syncDPSTrackerWindow();
 }
 
 Familiar::~Familiar()
 {
 	delete sprites;
 	delete cooldownText;
-	delete projectileTexture;
 	delete familiarDPSText;
+	for (auto& attack : attacks) delete attack.projectileTexture;
 }
 
 void Familiar::onResize()
@@ -140,26 +154,75 @@ void Familiar::onResize()
 	updateFamiliarDPSText();
 }
 
-void Familiar::update(float dt)
+void Familiar::executeAttack(FamiliarAttack& attack, sf::Vector2f targetPosition)
+{
+	attack.resetCooldown(getEffectiveCooldown(attack));
+	sprites->playAnimation(attack.animationKey, true, "idle");
+
+	// Bonus stats (purchased via ShopTab) only ever apply to auto-attacks - a manually
+	// activated ability runs on its own base stats alone.
+	BigNumber physical = attack.usesPhysicalDamage
+		? attack.basePhysicalPower + (attack.isAutoAttack ? bonusPhysicalPower : BigNumber(0))
+		: BigNumber(0);
+
+	// addMatching() only folds the bonus into elements THIS attack's base power already carries -
+	// e.g. a bonus purchased while this familiar's auto-attack was Fire-only won't leak into a
+	// different, Water-only ability this same familiar might also have.
+	ElementalPower elemental = attack.usesElementalDamage
+		? (attack.isAutoAttack ? attack.baseElementalPower.addMatching(bonusElementalPower) : attack.baseElementalPower)
+		: ElementalPower();
+
+	if (attack.isRanged)
+	{
+		activeProjectiles.emplace_back(sprites->getPosition(), targetPosition, attack.projectileTravelDuration,
+			physical, elemental, *attack.projectileTexture, attack.projectileScale);
+		return;
+	}
+
+	// melee - resolved instantly against whatever's on the field right now, same as the hero's
+	// own click damage. computeDamage() resolves each active element's own multiplier
+	// independently (no averaging across elements) - see ElementalPower::computeDamage.
+	BigNumber elementalDamage = elemental.computeDamage(elementalMultiplierResolver);
+	BigNumber finalDamage = physical + elementalDamage;
+	familiarDPSTracker.recordDamage(finalDamage);
+	if (onDamageDealt) onDamageDealt(finalDamage);
+}
+
+void Familiar::update(float dt, sf::Vector2f targetPosition)
 {
 	if (!unlocked) return;
-	if (attackCooldownRemaining > 0.0f) attackCooldownRemaining -= dt;
+
 	sprites->animate(dt);
 	familiarDPSTracker.update(dt);
 	updateFamiliarDPSText();
 
-	for (auto it = activeProjectiles.begin(); it != activeProjectiles.end(); )
+	for (auto& attack : attacks)
 	{
-		bool arrived = it->update(dt);
+		attack.tick(dt);
+		if (attack.isAutoAttack && attack.isReady())
+		{
+			executeAttack(attack, targetPosition);
+		}
+	}
+
+	for (auto activeProjectile = activeProjectiles.begin(); activeProjectile != activeProjectiles.end(); )
+	{
+		bool arrived = activeProjectile->update(dt);
 		if (arrived)
 		{
-			familiarDPSTracker.recordDamage(it->getDamage());
-			if (onProjectileHit) onProjectileHit(it->getDamage()); // Game applies the damage to whatever is currently at that spot
-			it = activeProjectiles.erase(it);
+			// Resolve weakness/resistance now, against whatever enemy is actually on the field
+			// at the moment of impact - not against whatever was there when the projectile
+			// launched. computeDamage() resolves each element this projectile carries against
+			// its own multiplier independently, with no averaging.
+			BigNumber finalDamage = activeProjectile->getPhysicalDamage() + activeProjectile->getElementalPower().computeDamage(elementalMultiplierResolver);
+
+			familiarDPSTracker.recordDamage(finalDamage);
+			if (onDamageDealt) onDamageDealt(finalDamage); // Game applies the damage to whatever is currently at that spot
+			activeProjectile = activeProjectiles.erase(activeProjectile);
 		}
 		else
 		{
-			++it;
+			++activeProjectile;
 		}
 	}
 }
@@ -196,58 +259,97 @@ void Familiar::unlock()
 	unlocked = true;
 }
 
-bool Familiar::isAttackReady() const
+size_t Familiar::getAttackCount() const
 {
-	return unlocked && attackCooldownRemaining <= 0.0f;
+	return attacks.size();
 }
 
-void Familiar::triggerAttack(sf::Vector2f targetPosition) // replaces the old resetAttackCooldown()
+const FamiliarAttack& Familiar::getAttack(size_t index) const
 {
-	attackCooldownRemaining = attackInterval;
-	sprites->playAnimation("attack", true, "idle");
-
-	activeProjectiles.emplace_back(sprites->getPosition(), targetPosition, projectileTravelDuration, rollDamage(), *projectileTexture, projectileScale);
+	return attacks[index];
 }
 
-void Familiar::setOnProjectileHitCallback(std::function<void(BigNumber damage)> callback)
+bool Familiar::isManualAttackReady(size_t attackIndex) const
 {
-	onProjectileHit = std::move(callback);
+	if (!unlocked || attackIndex >= attacks.size()) return false;
+	const FamiliarAttack& attack = attacks[attackIndex];
+	return !attack.isAutoAttack && attack.isReady();
+}
+
+bool Familiar::activateManualAttack(size_t attackIndex, sf::Vector2f targetPosition)
+{
+	if (!isManualAttackReady(attackIndex)) return false;
+	executeAttack(attacks[attackIndex], targetPosition);
+	return true;
+}
+
+void Familiar::setOnDamageDealtCallback(std::function<void(BigNumber damage)> callback)
+{
+	onDamageDealt = std::move(callback);
+}
+
+void Familiar::setElementalMultiplierResolver(std::function<double(Elements)> resolver)
+{
+	elementalMultiplierResolver = std::move(resolver);
 }
 
 BigNumber Familiar::rollDamage() const
 {
-	return physicalAttackPower + elementalAttackPower;
+	// A rough "power level" preview of the primary auto-attack's base + bonus stats - no
+	// weakness/resistance applied. Manual abilities aren't represented here since bonuses never
+	// apply to them anyway.
+	auto it = std::find_if(attacks.begin(), attacks.end(), [](const FamiliarAttack& a) { return a.isAutoAttack; });
+	if (it == attacks.end()) return BigNumber(0);
+
+	BigNumber physical = it->usesPhysicalDamage ? it->basePhysicalPower + bonusPhysicalPower : BigNumber(0);
+	BigNumber elemental = it->usesElementalDamage ? it->baseElementalPower.addMatching(bonusElementalPower).getTotal() : BigNumber(0);
+	return physical + elemental;
 }
 
-BigNumber Familiar::getPhysicalAttackPower() const
+BigNumber Familiar::getBonusPhysicalPower() const
 {
-	return physicalAttackPower;
+	return bonusPhysicalPower;
 }
 
-BigNumber Familiar::getElementalAttackPower() const
+BigNumber Familiar::getBonusElementalPower(Elements element) const
 {
-	return elementalAttackPower;
+	return bonusElementalPower.get(element);
 }
 
 void Familiar::increasePhysicalAttack(BigNumber amount)
 {
-	physicalAttackPower = physicalAttackPower + amount;
+	bonusPhysicalPower = bonusPhysicalPower + amount;
 }
 
 void Familiar::increaseElementalAttack(BigNumber amount)
 {
-	elementalAttackPower = elementalAttackPower + amount;
+	// Applied to every element the primary auto-attack's base power carries - covers today's
+	// single-element case and a future multi-element auto-attack (e.g. Fire+Water) alike,
+	// without ShopTab needing to know which element(s) are involved.
+	auto it = std::find_if(attacks.begin(), attacks.end(), [](const FamiliarAttack& a) { return a.isAutoAttack && a.usesElementalDamage; });
+	if (it == attacks.end()) return; // this familiar's auto-attack doesn't use elemental damage (yet) - nothing to upgrade
+
+	ElementMask mask = it->baseElementalPower.getMask();
+	for (int i = 0; i < static_cast<int>(ElementCount); i++)
+	{
+		Elements element = static_cast<Elements>(i);
+		if (mask & elementBit(element)) bonusElementalPower.add(element, amount);
+	}
 }
 
-void Familiar::reduceAttackCooldown(float amount)
+void Familiar::increaseCooldownReduction(float amount)
 {
-	attackInterval = std::max(minAttackInterval, attackInterval - amount);
-	syncDPSTrackerWindow();
+	bonusCooldownReduction += amount;
+	syncDPSTrackerWindow(); // the DPS averaging window tracks the primary auto-attack's effective cooldown, which just changed
 }
 
-bool Familiar::isAttackIntervalAtMinimum() const
+bool Familiar::isAutoAttackCooldownAtMinimum() const
 {
-	return attackInterval <= minAttackInterval;
+	for (const auto& attack : attacks)
+	{
+		if (attack.isAutoAttack && getEffectiveCooldown(attack) > attack.minCooldownLimit) return false;
+	}
+	return true; // true if every auto-attack (if any) is already capped at its own floor
 }
 
 void Familiar::setName(FamiliarName name)
@@ -260,27 +362,59 @@ FamiliarName Familiar::getName() const
 	return name;
 }
 
-void Familiar::setPhysicalAttackPower(BigNumber value)
+void Familiar::setBonusPhysicalPower(BigNumber value)
 {
-	physicalAttackPower = value;
+	bonusPhysicalPower = value;
 }
 
-void Familiar::setElementalAttackPower(BigNumber value)
+void Familiar::setBonusElementalPower(Elements element, BigNumber value)
 {
-	elementalAttackPower = value;
+	bonusElementalPower.set(element, value);
 }
 
-float Familiar::getAttackInterval() const
+void Familiar::setBonusCooldownReduction(float value)
 {
-	return attackInterval;
-}
-
-void Familiar::setAttackInterval(float seconds)
-{
-	attackInterval = seconds;
+	bonusCooldownReduction = value;
 	syncDPSTrackerWindow();
 }
 
+float Familiar::getBonusCooldownReduction() const
+{
+	return bonusCooldownReduction;
+}
+
+float Familiar::getAttackCooldown(size_t attackIndex) const
+{
+	return attackIndex < attacks.size() ? getEffectiveCooldown(attacks[attackIndex]) : 0.0f;
+}
+
+void Familiar::evolveTo(FamiliarType newType)
+{
+	name = newType.name;
+	label = newType.label;
+	type = newType.type;
+
+	delete sprites;
+	initSprites(newType.idleAnimationAddress, newType.idleFrameTimerMax, newType.spriteSize, newType.attacks);
+
+	for (auto& attack : attacks) delete attack.projectileTexture; // free the outgoing stage's projectile textures
+	attacks.clear();
+	setupAttacks(newType.attacks);
+	syncDPSTrackerWindow();
+
+	// projectiles already in flight were built from the old sprite/element - let them finish
+	// as the previous stage's attack rather than mid-air become the new dragon's
+	activeProjectiles.clear();
+
+	// bonusPhysicalPower, bonusElementalPower, bonusCooldownReduction and unlocked are
+	// deliberately left untouched here - evolving keeps purchased upgrade progress, it doesn't
+	// reset it. `attacks` above was just rebuilt from newType's BASE stats only, so the new
+	// stage's effective stats/cooldown are naturally base(new stage) combined with these
+	// unchanged bonuses the next time they're read (see getEffectiveCooldown/executeAttack) -
+	// no separate "carry the old cooldown reduction over" step is needed.
+
+	updateFamiliarDPSText();
+}
 
 void Familiar::updateFamiliarDPSText()
 {

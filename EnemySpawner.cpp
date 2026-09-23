@@ -36,7 +36,7 @@ void EnemySpawner::spawnRegularEnemy()
 		selectedEnemyType.spriteAddress, selectedEnemyType.spriteSize, scaledHealth, selectedEnemyType.frameTimerMax,
 		selectedEnemyType.hurtSpriteAddress, selectedEnemyType.hurtSpriteSize, selectedEnemyType.hurtFrameTimerMax,
 		selectedEnemyType.deathSpriteAddress, selectedEnemyType.deathSpriteSize, selectedEnemyType.deathFrameTimerMax,
-		scaledGold, false
+		scaledGold, false, selectedEnemyType.elementalAffinity
 	);
 	enemy->getSprites()->setPosition({ gameAreaWidth / 2.0f, 250.0f });
 	enemy->refreshHealthBar();
@@ -55,7 +55,7 @@ void EnemySpawner::spawnBoss()
 		bossType.spriteAddress, bossType.spriteSize, scaledHealth, bossType.frameTimerMax,
 		bossType.hurtSpriteAddress, bossType.hurtSpriteSize, bossType.hurtFrameTimerMax,
 		bossType.deathSpriteAddress, bossType.deathSpriteSize, bossType.deathFrameTimerMax,
-		scaledGold, true
+		scaledGold, true, bossType.elementalAffinity
 	);
 	enemy->getSprites()->setPosition({ gameAreaWidth / 2.0f, 200.0f });
 	enemy->refreshHealthBar();
@@ -164,6 +164,18 @@ bool EnemySpawner::getIsDeathAnimationFinished() const
 BigNumber EnemySpawner::getEnemyGold() const
 {
 	return enemy->gold;
+}
+
+double EnemySpawner::getEnemyElementalMultiplier(ElementMask attackElementMask) const
+{
+	if (enemy == nullptr) return 1.0;
+	return enemy->getElementalAffinity().getMultiplierForMask(attackElementMask);
+}
+
+double EnemySpawner::getEnemyElementalMultiplierForElement(Elements element) const
+{
+	if (enemy == nullptr) return 1.0;
+	return enemy->getElementalAffinity().getMultiplier(element);
 }
 
 sf::Vector2f EnemySpawner::getEnemyPosition() const

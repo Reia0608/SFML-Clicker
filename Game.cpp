@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 #include "Game.h"
 #include "Times.h"
 #include "Stage.h"
@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
+#include <array>
 
 const std::string Game::saveFilePath = "Save/savegame.json";
 
@@ -153,30 +154,44 @@ void Game::initUI()
 	tabbedPanel = new TabbedPanel();
 	shopTab = new ShopTab(hero, statistics, familiar, unlockManager);
 	tabbedPanel->addTab("Shop", shopTab);
+	familiarTab = new FamiliarTab(hero, itemManager, unlockManager);
+	tabbedPanel->addTab("Familiars", familiarTab);
+
+	familiarTab->onEvolveRedBabyDragon = [this]()
+		{
+			if (!familiar) return;
+			familiar->evolveTo(familiarTypeList[1]); // FireDragon (Juvenile) - the evolution of BabyFireDragon
+
+			// The new stage's auto-attack has its own baseCooldown/minCooldownLimit, so the
+			// familiar's carried-over bonusCooldownReduction may no longer be enough to have hit
+			// the new floor even if it had hit the old one - re-check visibility so the cooldown
+			// reduction button reappears if there's room to buy more.
+			if (shopTab) shopTab->refreshVisibility();
+		};
 
 	achievementsTab = new AchievementsTab(achievementManager);
 	tabbedPanel->addTab("Achievements", achievementsTab);
 	achievementManager->onAchievementUnlocked = [this](const Achievement& achievement)
-	{
-		achievementsTab->markPending();
-	};
+		{
+			achievementsTab->markPending();
+		};
 
 	achievementManager->onAchievementClaimed = [this](const Achievement& achievement) // NEW
-	{
-		if (achievement.name == "Hoarder")
 		{
-			shopTab->increaseGoldMultiplierGain(2.0f);
-		}
+			if (achievement.name == "Hoarder")
+			{
+				shopTab->increaseGoldMultiplierGain(2.0f);
+			}
 
-		/*if (achievement.name == "Familiar Bond")
-		{
-			unlockManager->unlock();
-		}*/
+			/*if (achievement.name == "Familiar Bond")
+			{
+				unlockManager->unlock();
+			}*/
 
-		// This is the single place to wire "claiming X unlocks feature Y" — for both shop buttons and achievement chains:
-		// if (achievement.name == "Big Spender") unlockManager->unlock("EliteSpenderUnlocked");
-		// if (achievement.name == "Veteran Slayer") unlockManager->unlock("SomeShopUpgradeKey");
-	};
+			// This is the single place to wire "claiming X unlocks feature Y" ï¿½ for both shop buttons and achievement chains:
+			// if (achievement.name == "Big Spender") unlockManager->unlock("EliteSpenderUnlocked");
+			// if (achievement.name == "Veteran Slayer") unlockManager->unlock("SomeShopUpgradeKey");
+		};
 
 	tabbedPanel->addTab("Statistics", new StatisticsTab(hero, statistics));
 	optionsTab = new OptionsTab(this, this);
@@ -194,15 +209,19 @@ void Game::initFamiliar(FamiliarName name)
 {
 	switch (name)
 	{
-		case BabyFireDragon:
-			familiar = new Familiar(familiarTypeList[0]);
-			familiar->setOnProjectileHitCallback([this](BigNumber damage) // applies damage once a fireball actually arrives, not instantly
+	case BabyFireDragon:
+		familiar = new Familiar(familiarTypeList[0]);
+		familiar->setOnDamageDealtCallback([this](BigNumber damage) // fires once per landed hit - melee-instant or projectile-arrival alike
 			{
-				enemySpawner->handleClick(damage, false); // familiar attacks don't crit for now
+				enemySpawner->handleClick(damage, false); // familiar attacks (auto or manual) don't crit for now
+			});
+		familiar->setElementalMultiplierResolver([this](Elements element)
+			{
+				return enemySpawner->getEnemyElementalMultiplierForElement(element);
 			});
 		break;
-		default: break;
-	}	
+	default: break;
+	}
 }
 
 void Game::initAchievements()
@@ -247,7 +266,7 @@ void Game::onWindowResized(sf::Vector2u newSize)
 	itemBar->onResize();
 	tabbedPanel->onResize();
 	// the y origin value is currently fixed! If the Tab Panel Height can change, it should be adjusted here as well
-	debugTab->onResize({ windowSize.x - (tabPanelWidth), 40.0f }, { tabPanelWidth , windowSize.y});
+	debugTab->onResize({ windowSize.x - (tabPanelWidth), 40.0f }, { tabPanelWidth , windowSize.y });
 }
 
 void Game::update()
@@ -271,17 +290,11 @@ void Game::update()
 		statistics->recordGoldEarned(goldEarned); // feeds the "Gold Rush" achievement
 	}
 
-	familiar->update(dt); // also advances any in-flight projectiles
-	if (familiar->isAttackReady())
-	{
-		familiar->triggerAttack(enemySpawner->getEnemyPosition());
-	}
+	familiar->update(dt, enemySpawner->getEnemyPosition()); // ticks cooldowns, auto-fires ready auto-attacks, advances in-flight projectiles
 
 	hero->updateSprites(dt);
 	hero->updateCurrencyPulse(dt);
 	hero->updateDPS(dt);
-
-	familiar->update(dt);
 
 	saveIndicator->update(dt);
 }
@@ -528,16 +541,22 @@ void Game::saveToFile(const std::string& path)
 		ofs << "critDamageMultiplier=" << hero->getCritDamageMultiplier() << '\n';
 
 		// Familiars
-		if(familiar)
+		if (familiar)
 		{
 			ofs << "[Familiar]\n";
 			ofs << "name=" << (familiar ? familiar->getName() : None) << '\n';
 			ofs << "unlocked=" << (familiar && familiar->isUnlocked() ? 1 : 0) << '\n';
-			ofs << "physicalAttackPower=" << familiar->getPhysicalAttackPower().toApproxDouble() << '\n';
-			ofs << "elementalAttackPower=" << familiar->getElementalAttackPower().toApproxDouble() << '\n';
-			ofs << "attackInterval=" << familiar->getAttackInterval() << '\n';
+			// Only the purchased BONUS stats are saved here - base stats are fully determined by
+			// `name` (which evolution stage) via familiarTypeList, so they never need saving, and
+			// evolving no longer invalidates anything that was saved (see Familiar::evolveTo).
+			ofs << "bonusPhysicalPower=" << familiar->getBonusPhysicalPower().toApproxDouble() << '\n';
+			for (int i = 0; i < static_cast<int>(ElementCount); i++)
+			{
+				ofs << "bonusElementalPower" << i << "=" << familiar->getBonusElementalPower(static_cast<Elements>(i)).toApproxDouble() << '\n';
+			}
+			ofs << "bonusCooldownReduction=" << familiar->getBonusCooldownReduction() << '\n';
 		}
-		
+
 		// Statistics
 		ofs << "[Statistics]\n";
 		ofs << "enemiesDefeated=" << statistics->getEnemiesDefeated() << '\n';
@@ -635,9 +654,13 @@ void Game::loadFromFile(const std::string& path)
 		// Defaults to current values, so older save files without a [Familiar] section leave it untouched (New)
 		bool familiarUnlocked = familiar && familiar->isUnlocked();
 		FamiliarName familiarName = BabyFireDragon; // default to BabyFireDragon if no familiar is saved
-		double familiarPhysicalAttackPower = familiar ? familiar->getPhysicalAttackPower().toApproxDouble() : 0.0;
-		double familiarElementalAttackPower = familiar ? familiar->getElementalAttackPower().toApproxDouble() : 0.0;
-		float familiarAttackInterval = familiar ? familiar->getAttackInterval() : 3.0f;
+		double familiarBonusPhysicalPower = familiar ? familiar->getBonusPhysicalPower().toApproxDouble() : 0.0;
+		std::array<double, ElementCount> familiarBonusElementalPower{};
+		for (int i = 0; i < static_cast<int>(ElementCount); i++)
+		{
+			familiarBonusElementalPower[i] = familiar ? familiar->getBonusElementalPower(static_cast<Elements>(i)).toApproxDouble() : 0.0;
+		}
+		float familiarBonusCooldownReduction = familiar ? familiar->getBonusCooldownReduction() : 0.0f;
 
 		int enemiesDefeated = 0;
 		int bossesDefeated = 0;
@@ -701,9 +724,16 @@ void Game::loadFromFile(const std::string& path)
 			{
 				if (key == "name") familiarName = static_cast<FamiliarName>(std::stoi(value));
 				else if (key == "unlocked") familiarUnlocked = (std::stoi(value) != 0);
-				else if (key == "physicalAttackPower") familiarPhysicalAttackPower = std::stod(value);
-				else if (key == "elementalAttackPower") familiarElementalAttackPower = std::stod(value);
-				else if (key == "attackInterval") familiarAttackInterval = std::stof(value);
+				else if (key == "bonusPhysicalPower") familiarBonusPhysicalPower = std::stod(value);
+				else if (key == "bonusCooldownReduction") familiarBonusCooldownReduction = std::stof(value);
+				else if (key.rfind("bonusElementalPower", 0) == 0) // e.g. "bonusElementalPower0", "bonusElementalPower1", ...
+				{
+					int elementIndex = std::stoi(key.substr(std::string("bonusElementalPower").size()));
+					if (elementIndex >= 0 && elementIndex < static_cast<int>(ElementCount))
+					{
+						familiarBonusElementalPower[elementIndex] = std::stod(value);
+					}
+				}
 			}
 			else if (section == "Statistics")
 			{
@@ -830,9 +860,12 @@ void Game::loadFromFile(const std::string& path)
 		{
 			familiar->unlock();
 			shopTab->refreshVisibility(); // replaces setFamiliarButtonActive(false) / setFamiliarButtonsActive(true)
-			familiar->setPhysicalAttackPower(BigNumber(familiarPhysicalAttackPower));
-			familiar->setElementalAttackPower(BigNumber(familiarElementalAttackPower));
-			familiar->setAttackInterval(familiarAttackInterval);
+			familiar->setBonusPhysicalPower(BigNumber(familiarBonusPhysicalPower));
+			for (int i = 0; i < static_cast<int>(ElementCount); i++)
+			{
+				familiar->setBonusElementalPower(static_cast<Elements>(i), BigNumber(familiarBonusElementalPower[i]));
+			}
+			familiar->setBonusCooldownReduction(familiarBonusCooldownReduction);
 		}
 
 		// Initialize familiar based on saved name (if any) IMPLEMENT LATER CORRECTLY WITH familiarList[i]

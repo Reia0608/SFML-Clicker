@@ -51,7 +51,7 @@ AchievementsTab::~AchievementsTab()
 void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize)
 {
 	const float margin = 10.0f;
-	const float entryHeight = 44.0f;
+	const float entryHeight = 40.0f;
 	const float buttonWidth = 160.0f; // should it not be a variable to better adapt the buttons while resizing the window?
 	const float buttonHeight = 30.0f; // same as above.
 

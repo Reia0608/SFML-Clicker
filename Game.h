@@ -17,6 +17,7 @@
 #include "SaveIndicator.h"
 #include "OptionsTab.h"
 #include "ShopTab.h"
+#include "FamiliarTab.h"
 #include "Familiar.h"
 #include "FamiliarType.h"
 #include "DebugTab.h"
@@ -30,43 +31,73 @@ private:
 	// List of all available familiar types, for later use in the ShopTab and FamiliarTab
 	std::vector<FamiliarType> familiarTypeList =
 	{
-		FamiliarType(BabyFireDragon, // 0
-		"Baby Fire Dragon",
-		"Fire",
-		Age::Baby,
-		"Textures/Familiars/Dragons/sprites/babydragon_sheets/babydragon_red_idle.png",
-		0.15f,
-		"Textures/Familiars/Dragons/sprites/babydragon_sheets/babydragon_red_attack1.png",
-		0.10f,
-		"",	// does not have a second attack
-		0.0f,
-		{96, 96},
-		"Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png",
-		0.10f,
-		{60, 60},
-		6,     // sheet is 360x60px = 6 frames of 60x60
-		2.5f,  // scale - tweak this to make the fireball bigger/smaller on screen
-		1.8f), // travelDuration in seconds - tweak this to make it fly slower/faster
-		
-		FamiliarType(FireDragon, // 1
-		"Fire Dragon",
-		"Fire",
-		Age::Juvenile,
-		"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_idle.png",
-		0.15f,
-		"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_attack1.png",
-		0.10f,
-		"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_attack2.png",
-		1.0f,
-		{240, 224},
-		"Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png",
-		0.10f,
-		{60, 60},
-		6,     // sheet is 360x60px = 6 frames of 60x60
-		4.0f, // scale - tweak this to make the fireball bigger/smaller on screen
-		1.8f), // travelDuration in seconds - tweak this to make it fly slower/faster
+		// Baby Fire Dragon: a single ranged auto-attack mixing physical + fire damage into one fireball
+		FamiliarType(BabyFireDragon, "Baby Fire Dragon", "Fire", Age::Baby,
+			"Textures/Familiars/Dragons/sprites/babydragon_sheets/babydragon_red_idle.png", 0.15f, {96, 96},
+			{
+				FamiliarAttack{
+					"Fireball",                                                                                              // name
+					"attack1",                                                                                               // animationKey
+					"Textures/Familiars/Dragons/sprites/babydragon_sheets/babydragon_red_attack1.png",                       // animationAddress
+					0.10f,                                                                                                   // animationFrameTimerMax
+					3.0f,                                                                                                    // baseCooldown
+					0.5f,                                                                                                    // minCooldownLimit
+					true,                                                                                                    // isAutoAttack
+					true,                                                                                                    // usesPhysicalDamage
+					BigNumber(5),                                                                                            // basePhysicalPower
+					true,                                                                                                    // usesElementalDamage
+					ElementalPower().set(Fire, BigNumber(3)),                                                                // baseElementalPower
+					true,                                                                                                    // isRanged
+					"Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png",           // projectileAnimationAddress
+					{60, 60},                                                                                                // projectileSpriteSize
+					0.10f,                                                                                                   // projectileFrameTimerMax
+					6,                                                                                                       // projectileFrameCount - sheet is 360x60px = 6 frames of 60x60
+					2.5f,                                                                                                    // projectileScale
+					1.8f                                                                                                     // projectileTravelDuration
+				}
+			}),
 
-		// add more familiars here later
+			// Fire Dragon: melee physical-only auto-attack (claws, no fireball) + a manually-activated big fireball, pure fire damage
+			FamiliarType(FireDragon, "Fire Dragon", "Fire", Age::Juvenile,
+				"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_idle.png", 0.15f, {240, 224},
+				{
+					FamiliarAttack{
+						"Claw Swipe",                                                                                            // name
+						"attack1",                                                                                               // animationKey
+						"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_attack1.png",                       // animationAddress
+						0.10f,                                                                                                   // animationFrameTimerMax
+						7.0f,                                                                                                    // baseCooldown
+						1.0f,                                                                                                    // minCooldownLimit
+						true,                                                                                                    // isAutoAttack
+						true,                                                                                                    // usesPhysicalDamage
+						BigNumber(1500),                                                                                          // basePhysicalPower - higher than the baby stage's, since this stage's base stats are stronger
+						false,                                                                                                   // usesElementalDamage
+						ElementalPower(),                                                                                       // baseElementalPower - unused, claws carry no element
+						false                                                                                                    // isRanged - melee, so every projectile field below stays at its default
+					},
+					FamiliarAttack{
+						"Fireball",                                                                                              // name
+						"attack2",                                                                                               // animationKey
+						"Textures/Familiars/Dragons/sprites/adultdragon/sheet/FireDragon_red_attack2.png",                       // animationAddress
+						1.0f,                                                                                                    // animationFrameTimerMax
+						10.0f,                                                                                                   // baseCooldown
+						0.5f,                                                                                                    // minCooldownLimit - unused, bonus cooldown reduction never applies to a manual ability
+						false,                                                                                                   // isAutoAttack - manually activated
+						false,                                                                                                   // usesPhysicalDamage
+						BigNumber(0),                                                                                            // basePhysicalPower - unused
+						true,                                                                                                    // usesElementalDamage
+						ElementalPower().set(Fire, BigNumber(3)),                                                                // baseElementalPower
+						true,                                                                                                    // isRanged
+						"Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png",           // projectileAnimationAddress
+						{60, 60},                                                                                                // projectileSpriteSize
+						0.10f,                                                                                                   // projectileFrameTimerMax
+						6,                                                                                                       // projectileFrameCount
+						5.0f,                                                                                                    // projectileScale - bigger than the auto-attack fireball used to be, it's the "big fireball" now
+						1.8f                                                                                                     // projectileTravelDuration
+					}
+				}),
+
+			// add more familiars here later
 	};
 
 	std::string title;
@@ -91,6 +122,7 @@ private:
 	Familiar* familiar = nullptr; // owned by Game (unlike shopTab/optionsTab, not a TabContent)
 	DebugTab* debugTab = nullptr;
 	AchievementsTab* achievementsTab = nullptr; // non-owning - owned by tabbedPanel, kept here to wire the unlock->blink callback
+	FamiliarTab* familiarTab = nullptr; // non-owning
 	UnlockManager* unlockManager;
 
 	// Autosave / save indicator

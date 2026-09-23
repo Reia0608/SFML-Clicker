@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 #include "ShopTab.h"
 #include <sstream>
 #include <iomanip>
@@ -15,7 +15,7 @@ void ShopTab::relayoutButtons() // the core of the locking system
 		bool visible = entry.isVisible();
 		entry.button->setEnabled(visible); // UIButton already skips render()/handleClick() while disabled
 
-		if (!visible) continue; // locked/hidden buttons reserve no space — this is the fix
+		if (!visible) continue; // locked/hidden buttons reserve no space ï¿½ this is the fix
 
 		entry.button->setLayout(
 			{ lastContentAreaOrigin.x + margin, y },
@@ -126,7 +126,7 @@ void ShopTab::onBuyFamiliarCooldownReductionClicked()
 {
 	if (hero->trySpendCurrency(familiarCooldownReductionCost))
 	{
-		familiar->reduceAttackCooldown(familiarCooldownReductionAmount);
+		familiar->increaseCooldownReduction(familiarCooldownReductionAmount);
 		statistics->recordShopUpgradePurchased();
 		familiarCooldownReductionCost = familiarCooldownReductionCost * BigNumber(1.5);
 		updateFamiliarCooldownButtonLabel();
@@ -144,7 +144,7 @@ std::string ShopTab::formatCooldownAmount(double amount)
 	return amountStr;
 }
 
-ShopTab::ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockManager* unlockManager) // CHANGED
+ShopTab::ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockManager* unlockManager)
 	: hero(hero), statistics(statistics), familiar(familiar), unlockManager(unlockManager)
 {
 	buyAttackButton = new UIButton("", [this]() { onBuyAttackClicked(); });
@@ -173,7 +173,7 @@ ShopTab::ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockM
 		{ buyFamiliarButton,                      [this]() { return !this->familiar->isUnlocked(); } },
 		{ buyFamiliarUpgradePhysicalAttackButton, [this]() { return this->familiar->isUnlocked(); } },
 		{ buyFamiliarUpgradeElementalAttackButton,[this]() { return this->familiar->isUnlocked(); } },
-		{ buyFamiliarCooldownReductionButton,     [this]() { return this->familiar->isUnlocked() && !this->familiar->isAttackIntervalAtMinimum(); } },
+		{ buyFamiliarCooldownReductionButton,     [this]() { return this->familiar->isUnlocked() && !this->familiar->isAutoAttackCooldownAtMinimum(); } },
 		// Example: a future feature-gated upgrade, hidden until "SomeAchievement" is claimed:
 		// { buyNewUpgradeButton, [this]() { return unlockManager->isUnlocked("SomeFeatureKey"); } },
 	};

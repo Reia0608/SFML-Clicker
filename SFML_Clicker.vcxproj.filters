@@ -103,6 +103,9 @@
     <ClCompile Include="UnlockManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="FamiliarTab.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -216,9 +219,6 @@
     <ClInclude Include="Familiar.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FamiliarAbility.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="FamiliarType.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -238,6 +238,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="UnlockManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FamiliarTab.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ElementalAffinity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FamiliarAttack.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ElementalPower.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -2,9 +2,10 @@
 #include "Projectile.h"
 #include <cmath>
 
-Projectile::Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, float travelDuration, BigNumber damage, const Textures& textureTemplate, float scale)
+Projectile::Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, float travelDuration, BigNumber physicalDamage, ElementalPower elementalPower, const Textures& textureTemplate, float scale)
 	: texture(std::make_unique<Textures>(textureTemplate)), sprite(*texture),
-	startPosition(startPosition), targetPosition(targetPosition), travelDuration(travelDuration), damage(damage)
+	startPosition(startPosition), targetPosition(targetPosition), travelDuration(travelDuration),
+	physicalDamage(physicalDamage), elementalPower(elementalPower)
 {
 	texture->resetAnimation(); // start this projectile's own copy at frame 0, independent of the template's playback position
 
@@ -26,7 +27,8 @@ Projectile::Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, 
 Projectile::Projectile(const Projectile& other)
 	: texture(std::make_unique<Textures>(*other.texture)), sprite(other.sprite),
 	startPosition(other.startPosition), targetPosition(other.targetPosition),
-	travelDuration(other.travelDuration), elapsed(other.elapsed), damage(other.damage)
+	travelDuration(other.travelDuration), elapsed(other.elapsed),
+	physicalDamage(other.physicalDamage), elementalPower(other.elementalPower)
 {
 	sprite.setTexture(*texture); // rebind the copied sprite to THIS projectile's own texture copy, not the source's
 }
@@ -42,7 +44,8 @@ Projectile& Projectile::operator=(const Projectile& other)
 		targetPosition = other.targetPosition;
 		travelDuration = other.travelDuration;
 		elapsed = other.elapsed;
-		damage = other.damage;
+		physicalDamage = other.physicalDamage;
+		elementalPower = other.elementalPower;
 	}
 	return *this;
 }
@@ -78,7 +81,12 @@ void Projectile::draw(sf::RenderWindow* window) const
 	window->draw(sprite);
 }
 
-BigNumber Projectile::getDamage() const
+BigNumber Projectile::getPhysicalDamage() const
 {
-	return damage;
+	return physicalDamage;
+}
+
+const ElementalPower& Projectile::getElementalPower() const
+{
+	return elementalPower;
 }

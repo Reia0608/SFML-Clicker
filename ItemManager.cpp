@@ -70,6 +70,14 @@ void ItemManager::setDropChance(float value)
 	dropChance = value;
 }
 
+bool ItemManager::trySpendItem(int index, int amount)
+{
+	if (index < 0 || index >= static_cast<int>(inventoryCounts.size())) return false;
+	if (inventoryCounts[index] < amount) return false;
+	inventoryCounts[index] -= amount;
+	return true;
+}
+
 Textures* ItemManager::getIconSheet() const 
 {
 	return iconSheet; 

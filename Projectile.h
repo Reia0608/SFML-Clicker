@@ -1,6 +1,8 @@
 #pragma once
 #include "stdafx.h"
 #include "BigNumber.h"
+#include "Elements.h"
+#include "ElementalPower.h"
 #include "Textures.h"
 #include <memory>
 
@@ -27,13 +29,20 @@ private:
 	sf::Vector2f targetPosition;
 	float travelDuration; // seconds to cross from start to target
 	float elapsed = 0.0f;
-	BigNumber damage;
+	BigNumber physicalDamage;
+	ElementalPower elementalPower; // this projectile's elemental power, broken down per element - 0 active elements = physical only
 
 public:
 	// textureTemplate: the Familiar's shared, already-loaded projectile animation asset.
 	// Copied (not referenced) so this projectile can animate independently of its siblings.
 	// scale: on-screen size multiplier applied to the sprite (source frame stays projectileSpriteSize pixels).
-	Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, float travelDuration, BigNumber damage, const Textures& textureTemplate, float scale = 1.0f);
+	// physicalDamage/elementalPower are kept separate (rather than pre-combined into one final
+	// damage number) because each active element's own weakness/resistance multiplier is only
+	// resolved on arrival, against whatever enemy is actually on the field at that moment - see
+	// Familiar::update(). Keeping the full per-element breakdown (rather than a single pre-summed
+	// elemental total) means a projectile carrying several elements at once still gets each one
+	// scaled by its own multiplier on arrival, with no averaging.
+	Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, float travelDuration, BigNumber physicalDamage, ElementalPower elementalPower, const Textures& textureTemplate, float scale = 1.0f);
 	Projectile(const Projectile& other);
 	Projectile& operator=(const Projectile& other);
 	Projectile(Projectile&&) noexcept = default;
@@ -41,5 +50,6 @@ public:
 
 	bool update(float dt); // returns true the frame it reaches its target
 	void draw(sf::RenderWindow* window) const;
-	BigNumber getDamage() const;
+	BigNumber getPhysicalDamage() const;
+	const ElementalPower& getElementalPower() const;
 };

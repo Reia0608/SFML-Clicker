@@ -166,7 +166,7 @@ void Hero::playAttack2Animation()
 }
 
 BigNumber Hero::getAttackPower() const
-{ 
+{
 	return attackPower;
 }
 
@@ -206,8 +206,8 @@ void Hero::setGoldMultiplier(double value)
 	goldMultiplier = value;
 }
 
-bool Hero::isCritUnlocked() const 
-{ 
+bool Hero::isCritUnlocked() const
+{
 	return critUnlocked;
 }
 
@@ -217,7 +217,7 @@ double Hero::getCritChance() const
 }
 
 double Hero::getCritDamageMultiplier() const
-{ 
+{
 	return critDamageMultiplier;
 }
 

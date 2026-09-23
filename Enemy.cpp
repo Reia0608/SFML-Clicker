@@ -82,7 +82,7 @@ void Enemy::showDamage(BigNumber damage, bool isCritical)
 	damageNumbers.push_back({ newText, 0.0f });
 
 	// Safety net against Autoclicker: prevents unlimited growth
-	const size_t maxSimultaneousNumbers = 30;
+	const size_t maxSimultaneousNumbers = 40;
 	if (damageNumbers.size() > maxSimultaneousNumbers)
 	{
 		delete damageNumbers.front().text;
@@ -117,7 +117,7 @@ void Enemy::initBossTimer()
 void Enemy::updateTimerBar()
 {
 	sf::FloatRect bounds = sprites->getGlobalBounds();
-	const float margin = 30.0f;   // etwas mehr Abstand, damit sich Timer-Bar und Health-Bar nicht überlappen
+	const float margin = 30.0f;   // a somewhat bigger margin so that Timer-Bar and Health-Bar don't overlap
 	const float barWidth = 100.0f;
 	const float barHeight = 10.0f;
 
@@ -144,11 +144,12 @@ void Enemy::updateTimerBar()
 Enemy::Enemy(std::string spriteAddress, sf::Vector2u spriteSize, BigNumber maxHealth, float frameTimerMax,
 	std::string hurtSpriteAddress, sf::Vector2u hurtSpriteSize, float hurtFrameTimerMax,
 	std::string deathSpriteAddress, sf::Vector2u deathSpriteSize, float deathFrameTimerMax, BigNumber gold,
-	bool isBoss)
+	bool isBoss, ElementalAffinity elementalAffinity)
 	: EnemyType(spriteAddress, spriteSize, maxHealth, frameTimerMax,
 		hurtSpriteAddress, hurtSpriteSize, hurtFrameTimerMax,
 		deathSpriteAddress, deathSpriteSize, deathFrameTimerMax, gold), isBoss(isBoss)
 {
+	this->elementalAffinity = elementalAffinity; // EnemyType's own constructor has no affinity param, so apply it here instead
 	initHealth(maxHealth);
 	initFonts();
 	initHealthBar();
@@ -188,6 +189,11 @@ Enemy::~Enemy()
 BigNumber Enemy::getHealth() const
 {
 	return health;
+};
+
+const ElementalAffinity& Enemy::getElementalAffinity() const
+{
+	return elementalAffinity; // inherited from EnemyType
 };
 
 bool Enemy::isClicked(sf::Vector2f mousePos) const

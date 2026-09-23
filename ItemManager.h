@@ -30,6 +30,8 @@ class ItemManager
 		float getDropChance() const;
 		void setDropChance(float value); // debug use
 
+		bool trySpendItem(int index, int amount); // returns false and does nothing if insufficient
+
 		Textures* getIconSheet() const;
 		sf::Vector2u getIconFrameSize() const;
 };
