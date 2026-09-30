@@ -168,8 +168,8 @@ ShopTab::ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockM
 	buttonEntries = {
 		{ buyAttackButton,                        [this]() { return true; } },
 		{ buyGoldMultiplierButton,                [this]() { return true; } },
-		{ buyCritChanceButton,                    [this]() { return true; } },
-		{ buyCritDamageButton,                    [this]() { return true; } },
+		{ buyCritChanceButton,					  [this]() { return true; } },
+		{ buyCritDamageButton,                    [this]() { return this->unlockManager->isUnlocked("CritDamageUnlocked"); } },
 		{ buyFamiliarButton,                      [this]() { return !this->familiar->isUnlocked(); } },
 		{ buyFamiliarUpgradePhysicalAttackButton, [this]() { return this->familiar->isUnlocked(); } },
 		{ buyFamiliarUpgradeElementalAttackButton,[this]() { return this->familiar->isUnlocked(); } },
@@ -236,6 +236,8 @@ void ShopTab::onBuyCritChanceClicked()
 		if (!hero->isCritUnlocked())
 		{
 			hero->unlockCriticalHits(critChanceUnlockValue);
+			unlockManager->unlock("CritDamageUnlocked");
+			relayoutButtons();
 		}
 		else
 		{

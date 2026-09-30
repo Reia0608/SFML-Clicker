@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 #include "AchievementsTab.h"
 
 
@@ -16,7 +16,10 @@ void AchievementsTab::rebuildLines()
 	{
 		AchievementLine line;
 		line.nameText = new Text(achievement->name, "Fonts/arial.ttf");
+		line.nameText->setCharacterSize(14);
+
 		line.descriptionText = new Text(achievement->description + " (Reward: " + achievement->rewardLabel + ")", "Fonts/arial.ttf");
+		line.descriptionText->setCharacterSize(14);
 
 		std::string name = achievement->name;
 		line.claimButton = new UIButton("Claim " + achievement->rewardLabel, [this, name]() { achievementManager->claimReward(name); });
@@ -79,7 +82,7 @@ void AchievementsTab::render(sf::RenderWindow* window)
 	auto visible = achievementManager->getVisibleAchievements(); // NEW
 	if (visible.size() != lines.size())
 	{
-		rebuildLines(); // a previously-hidden achievement just became visible — resync line count
+		rebuildLines(); // a previously-hidden achievement just became visible ï¿½ resync line count
 	}
 
 	refreshClaimButtons();

@@ -25,27 +25,28 @@ ItemManager::~ItemManager()
 	delete iconSheet;
 }
 
-void ItemManager::rollBossDrop()
+std::optional<int> ItemManager::rollBossDrop()
 {
 	float roll = Randomize::returnRandomizeFloat(0.0f, 1.0f);
 	if (roll <= dropChance)
 	{
 		int index = Randomize::returnRandomizeInt(0, static_cast<int>(itemDefinitions.size()) - 1);
-		inventoryCounts[index]++;
+		return index; // caller (EnemySpawner) fires onItemDroppedCallback with this; the inventory is only actually incremented via addItem() once the drop animation reaches the ItemBar (see LootDropManager)
 	}
+	return std::nullopt;
 }
 
-int ItemManager::getItemCount() const 
+int ItemManager::getItemCount() const
 {
-	return static_cast<int>(itemDefinitions.size()); 
+	return static_cast<int>(itemDefinitions.size());
 }
 
-const ItemDefinition& ItemManager::getItemDefinition(int index) const 
-{ 
-	return itemDefinitions[index]; 
+const ItemDefinition& ItemManager::getItemDefinition(int index) const
+{
+	return itemDefinitions[index];
 }
 
-int ItemManager::getInventoryCount(int index) const 
+int ItemManager::getInventoryCount(int index) const
 {
 	return inventoryCounts[index];
 }
@@ -53,6 +54,11 @@ int ItemManager::getInventoryCount(int index) const
 void ItemManager::setInventoryCount(int index, int count)
 {
 	if (index >= 0 && index < static_cast<int>(inventoryCounts.size())) inventoryCounts[index] = count;
+}
+
+void ItemManager::addItem(int index)
+{
+	if (index >= 0 && index < static_cast<int>(inventoryCounts.size())) inventoryCounts[index]++;
 }
 
 void ItemManager::resetInventory()
@@ -78,12 +84,12 @@ bool ItemManager::trySpendItem(int index, int amount)
 	return true;
 }
 
-Textures* ItemManager::getIconSheet() const 
+Textures* ItemManager::getIconSheet() const
 {
-	return iconSheet; 
+	return iconSheet;
 }
 
 sf::Vector2u ItemManager::getIconFrameSize() const
 {
-	return iconFrameSize; 
+	return iconFrameSize;
 }

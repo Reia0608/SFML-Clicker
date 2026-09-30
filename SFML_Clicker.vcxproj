@@ -97,12 +97,15 @@
     <ClCompile Include="EnemySpawner.cpp" />
     <ClCompile Include="Familiar.cpp" />
     <ClCompile Include="FamiliarTab.cpp" />
+    <ClCompile Include="FloatingDamageText.cpp" />
     <ClCompile Include="Fonts.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Hero.cpp" />
+    <ClCompile Include="HUD.cpp" />
     <ClCompile Include="Images.cpp" />
     <ClCompile Include="ItemBar.cpp" />
     <ClCompile Include="ItemManager.cpp" />
+    <ClCompile Include="LootDropManager.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="OptionsTab.cpp" />
     <ClCompile Include="Projectile.cpp" />
@@ -139,9 +142,11 @@
     <ClInclude Include="FamiliarAttack.h" />
     <ClInclude Include="FamiliarTab.h" />
     <ClInclude Include="FamiliarType.h" />
+    <ClInclude Include="FloatingDamageText.h" />
     <ClInclude Include="Fonts.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="Hero.h" />
+    <ClInclude Include="HUD.h" />
     <ClInclude Include="IDebugController.h" />
     <ClInclude Include="Images.h" />
     <ClInclude Include="ISaveable.h" />
@@ -150,6 +155,7 @@
     <ClInclude Include="ItemManager.h" />
     <ClInclude Include="IWindowController.h" />
     <ClInclude Include="LayoutManager.h" />
+    <ClInclude Include="LootDropManager.h" />
     <ClInclude Include="OptionsTab.h" />
     <ClInclude Include="Projectile.h" />
     <ClInclude Include="PublicVariables.h" />

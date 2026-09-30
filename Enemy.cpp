@@ -63,7 +63,7 @@ void Enemy::initFonts()
 	fonts = new Fonts("Fonts/arial.ttf");
 };
 
-void Enemy::showDamage(BigNumber damage, bool isCritical)
+void Enemy::showDamage(BigNumber damage, bool isCritical, sf::Color baseColor, ElementMask elementMask)
 {
 	sf::FloatRect bounds = sprites->getGlobalBounds();
 
@@ -72,20 +72,37 @@ void Enemy::showDamage(BigNumber damage, bool isCritical)
 	float topY = bounds.position.y - 2.0f;
 	float randomX = Randomize::returnRandomizeFloat(leftX, rightX);
 
-	Text* newText = new Text(damage.toString() + (isCritical ? "!" : ""), fonts);
-	newText->setFillColor(isCritical ? sf::Color(255, 165, 0, 255) : sf::Color::Red);
-	newText->setOutlineColor(sf::Color::Black);
-	newText->setOutlineThickness(2.0f);
-	newText->setOrigin(newText->getGlobalBounds().size / 2.0f);
-	newText->setPosition({ randomX, topY });
+	std::string str = damage.toString() + (isCritical ? "!" : "");
+	sf::Vector2f position{ randomX, topY };
 
-	damageNumbers.push_back({ newText, 0.0f });
+	std::unique_ptr<FloatingDamageText> newText;
+	if (isCritical)
+	{
+		// Crit still always overrides to solid Orange regardless of source or element, same as before.
+		newText = std::make_unique<FloatingDamageText>(str, fonts, sf::Color(255, 165, 0, 255), position);
+	}
+	else if (elementMask != 0)
+	{
+		// Elemental hit - fill is the element's gradient, outline is baseColor (the "who hit"
+		// source-identity color: Hero red / familiar blue / passive pink), thicker than the
+		// default 2.0f so a colored outline still reads clearly against the colored fill.
+		const ElementColorGradient& gradient = getElementColorGradient(firstElementInMask(elementMask));
+		newText = std::make_unique<FloatingDamageText>(str, fonts, gradient.start, gradient.end, position, baseColor, 3.0f);
+	}
+	else
+	{
+		// Physical hit, no element - falls back to whichever source-identity color the caller
+		// passed (defaults to Red, the Hero's own color, so the Hero's own call site didn't need
+		// to change) - see EnemySpawner::handleClick().
+		newText = std::make_unique<FloatingDamageText>(str, fonts, baseColor, position);
+	}
+
+	damageNumbers.push_back(std::move(newText));
 
 	// Safety net against Autoclicker: prevents unlimited growth
 	const size_t maxSimultaneousNumbers = 40;
 	if (damageNumbers.size() > maxSimultaneousNumbers)
 	{
-		delete damageNumbers.front().text;
 		damageNumbers.erase(damageNumbers.begin());
 	}
 };
@@ -174,10 +191,7 @@ Enemy::Enemy(std::string spriteAddress, sf::Vector2u spriteSize, BigNumber maxHe
 Enemy::~Enemy()
 {
 	delete sprites;
-	for (auto& dmg : damageNumbers)
-	{
-		delete dmg.text;
-	}
+	// damageNumbers is now a vector<unique_ptr<FloatingDamageText>> - cleans itself up
 	delete fonts;
 	delete healthText;
 	if (timerText != nullptr)
@@ -226,10 +240,10 @@ bool Enemy::getIsDeathAnimationStarted() const
 	return deathAnimationStarted;
 };
 
-void Enemy::takeDamage(BigNumber damage, bool isCritical)
+void Enemy::takeDamage(BigNumber damage, bool isCritical, sf::Color baseColor, ElementMask elementMask)
 {
 	health = health - damage;
-	this->showDamage(damage, isCritical);
+	this->showDamage(damage, isCritical, baseColor, elementMask);
 	updateHealthBar();
 	sprites->playAnimation("hurt", true, "idle"); // plays once, then back to idle state
 };
@@ -245,31 +259,14 @@ void Enemy::updateDamageText(float dt)
 {
 	for (auto it = damageNumbers.begin(); it != damageNumbers.end(); )
 	{
-		it->elapsed += dt;
-		float t = it->elapsed / damageTextDuration;
-
-		if (t >= 1.0f)
+		if (!(*it)->update(dt))
 		{
-			delete it->text;
 			it = damageNumbers.erase(it);
-			continue;
 		}
-
-		sf::Vector2f pos = it->text->getPosition();
-		pos.y -= 30.0f * dt;
-		it->text->setPosition(pos);
-
-		std::uint8_t alpha = static_cast<std::uint8_t>(255 * (1.0f - t));
-
-		sf::Color fillColor = it->text->getFillColor();
-		fillColor.a = alpha;
-		it->text->setFillColor(fillColor);
-
-		sf::Color outlineColor = it->text->getOutlineColor();
-		outlineColor.a = alpha;
-		it->text->setOutlineColor(outlineColor);
-
-		++it;
+		else
+		{
+			++it;
+		}
 	}
 };
 
@@ -277,7 +274,7 @@ void Enemy::drawDamageText(sf::RenderWindow* window)
 {
 	for (auto& dmg : damageNumbers)
 	{
-		window->draw(*dmg.text);
+		dmg->draw(window);
 	}
 };
 

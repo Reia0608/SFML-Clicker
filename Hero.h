@@ -92,4 +92,8 @@ public:
 
 	// is public so ShopTab.cpp can access it to update the damage text when buying Attack+1
 	void updateClickDamageText();
+
+	sf::Vector2f getCurrencyTextPosition() const { return currencyText->getPosition(); } // used by LootDropManager as the fly-to target for gold drops
+
+	sf::FloatRect getStatsBounds() const; // union of currencyText/dpsText/clickDamageText's current on-screen bounds - used by Game to size its HUD backing panel around whatever's actually shown, rather than a fixed size
 };

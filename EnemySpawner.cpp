@@ -2,6 +2,7 @@
 #include "PublicVariables.h"
 #include "Randomize.h"
 #include <cmath>
+#include <optional>
 
 
 BigNumber EnemySpawner::computeScaledHealth(BigNumber baseHealth, int exponent) const
@@ -73,16 +74,23 @@ void EnemySpawner::spawnNextEncounter()
 	}
 }
 
-BigNumber EnemySpawner::finishEnemyDefeat()
+void EnemySpawner::finishEnemyDefeat()
 {
 	BigNumber goldEarned = enemy->gold;
 	bool wasBoss = enemy->getIsBoss();
+	sf::Vector2f dropPosition = enemy->getSprites()->getPosition(); // where the drop visuals should spawn from
 
 	if (wasBoss)
 	{
 		statistics->recordBossDefeated();
 		statistics->setHighestStageReached(currentStageNumber);
-		itemManager->rollBossDrop();
+
+		std::optional<int> droppedItemIndex = itemManager->rollBossDrop();
+		if (droppedItemIndex.has_value() && onItemDroppedCallback)
+		{
+			onItemDroppedCallback(droppedItemIndex.value(), dropPosition); // the actual inventory increment happens later, once LootDropManager's drop reaches the ItemBar (see ItemManager::addItem)
+		}
+
 		currentStageNumber++;
 		enemyIndexInStage = 0;
 		statistics->recordBossKillTime(enemy->getBossTimeElapsed());
@@ -103,11 +111,14 @@ BigNumber EnemySpawner::finishEnemyDefeat()
 		enemyIndexInStage++;
 	}
 
+	if (goldEarned > BigNumber(0) && onGoldDroppedCallback)
+	{
+		onGoldDroppedCallback(goldEarned, dropPosition); // the actual currency gain happens later, once LootDropManager's drop reaches the Gold counter (see Hero::gainCurrency)
+	}
+
 	delete enemy;
 	enemy = nullptr;
 	spawnNextEncounter();
-
-	return goldEarned;
 }
 
 EnemySpawner::EnemySpawner(Statistics* statistics, ItemManager* itemManager)
@@ -141,11 +152,11 @@ void EnemySpawner::render(sf::RenderWindow* window)
 	}
 }
 
-bool EnemySpawner::handleClick(BigNumber damage, bool isCritical)
+bool EnemySpawner::handleClick(BigNumber damage, bool isCritical, sf::Color baseColor, ElementMask elementMask)
 {
 	if (enemy != nullptr && !(enemy->getIsDeathAnimationStarted()))
 	{
-		enemy->takeDamage(damage, isCritical);
+		enemy->takeDamage(damage, isCritical, baseColor, elementMask);
 		return true;
 	}
 	return false;
@@ -164,6 +175,21 @@ bool EnemySpawner::getIsDeathAnimationFinished() const
 BigNumber EnemySpawner::getEnemyGold() const
 {
 	return enemy->gold;
+}
+
+std::string EnemySpawner::getEnemyName() const
+{
+	return enemy != nullptr ? enemy->name : "";
+}
+
+int EnemySpawner::getEnemyIndexInStage() const
+{
+	return enemyIndexInStage;
+}
+
+bool EnemySpawner::getIsCurrentEnemyBoss() const
+{
+	return enemy != nullptr && enemy->getIsBoss();
 }
 
 double EnemySpawner::getEnemyElementalMultiplier(ElementMask attackElementMask) const
@@ -196,12 +222,12 @@ void EnemySpawner::setEnemyHealth(BigNumber value) // debug only
 	}
 }
 
-BigNumber EnemySpawner::update(float dt)
+void EnemySpawner::update(float dt)
 {
 	if (enemy == nullptr)
 	{
 		spawnNextEncounter();
-		return BigNumber(0);
+		return;
 	}
 
 	if (enemy->isShowingDamageText())
@@ -230,7 +256,7 @@ BigNumber EnemySpawner::update(float dt)
 				std::cout << "[EnemySpawner] Boss time up, but no callback is set!" << std::endl; // DEBUG - remove once confirmed working
 			}
 
-			return BigNumber(0);
+			return;
 		}
 	}
 
@@ -238,7 +264,8 @@ BigNumber EnemySpawner::update(float dt)
 	{
 		if (!deathAnimationsEnabled)
 		{
-			return finishEnemyDefeat();
+			finishEnemyDefeat();
+			return;
 		}
 
 		enemy->loadDeathAnimation();
@@ -246,16 +273,15 @@ BigNumber EnemySpawner::update(float dt)
 
 		if (enemy->isDeathAnimationFinished())
 		{
-			return finishEnemyDefeat();
+			finishEnemyDefeat();
+			return;
 		}
 
-		return BigNumber(0);
+		return;
 	}
 	else
 	{
 		enemy->getSprites()->animate(dt);
-
-		return BigNumber(0);
 	}
 }
 
@@ -276,4 +302,14 @@ void EnemySpawner::setCurrentStageNumber(int newStageNumber)
 void EnemySpawner::setOnBossEncounterEndedCallback(std::function<void(bool wasDefeated)> callback)
 {
 	onBossEncounterEndedCallback = std::move(callback);
+}
+
+void EnemySpawner::setOnGoldDroppedCallback(std::function<void(BigNumber amount, sf::Vector2f position)> callback)
+{
+	onGoldDroppedCallback = std::move(callback);
+}
+
+void EnemySpawner::setOnItemDroppedCallback(std::function<void(int itemIndex, sf::Vector2f position)> callback)
+{
+	onItemDroppedCallback = std::move(callback);
 }

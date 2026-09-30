@@ -13,12 +13,22 @@ void TabbedPanel::updateLayout()
 	tabHeaderStrip.setSize({ tabPanelWidth, headerHeight });
 	tabHeaderStrip.setPosition({ panelX, 0.0f });
 
-	if (!tabButtons.empty()) // distribute tabs evenly in the header list
+	// Only currently-visible tabs get a slot in the header strip - a hidden tab (e.g. Familiars
+	// before a familiar has been bought) reserves no space, same "hidden takes no space" rule
+	// ShopTab/FamiliarTab already use for their own buttons.
+	std::vector<size_t> visibleIndices;
+	for (size_t i = 0; i < tabButtons.size(); i++)
 	{
-		float buttonWidth = tabPanelWidth / tabButtons.size();
-		for (size_t i = 0; i < tabButtons.size(); i++)
+		if (tabIsVisible[i]()) visibleIndices.push_back(i);
+	}
+
+	if (!visibleIndices.empty())
+	{
+		float buttonWidth = tabPanelWidth / visibleIndices.size();
+		for (size_t slot = 0; slot < visibleIndices.size(); slot++)
 		{
-			tabButtons[i]->setLayout({ panelX + i * buttonWidth, 0.0f }, { buttonWidth, headerHeight });
+			size_t i = visibleIndices[slot];
+			tabButtons[i]->setLayout({ panelX + slot * buttonWidth, 0.0f }, { buttonWidth, headerHeight });
 		}
 	}
 
@@ -47,7 +57,7 @@ TabbedPanel::~TabbedPanel()
 	for (auto* content : tabContents) delete content;
 }
 
-void TabbedPanel::addTab(std::string name, TabContent* content)
+void TabbedPanel::addTab(std::string name, TabContent* content, std::function<bool()> isVisible)
 {
 	size_t index = tabContents.size();
 
@@ -55,6 +65,11 @@ void TabbedPanel::addTab(std::string name, TabContent* content)
 	tabButtons.push_back(headerButton);
 	tabContents.push_back(content);
 	scrollOffsets.push_back(0.0f); // every tab starts scrolled to the top
+
+	tabIsVisible.push_back(isVisible ? isVisible : std::function<bool()>([]() { return true; }));
+	bool initiallyVisible = tabIsVisible.back()();
+	tabWasVisible.push_back(initiallyVisible); // seed with the current state, so a tab visible from the start never blinks
+	tabRevealPending.push_back(false);
 
 	updateLayout();
 }
@@ -69,15 +84,35 @@ void TabbedPanel::render(sf::RenderWindow* window)
 	window->draw(background);
 	window->draw(tabHeaderStrip);
 
+	std::vector<bool> currentlyVisible(tabButtons.size());
+	bool visibilityChanged = false;
+
 	for (size_t i = 0; i < tabButtons.size(); i++)
 	{
-		tabButtons[i]->setNotifying(i != activeTabIndex && tabContents[i]->hasPendingNotification());
+		bool visible = tabIsVisible[i]();
+		currentlyVisible[i] = visible;
+
+		if (visible != tabWasVisible[i])
+		{
+			visibilityChanged = true;
+			if (visible) tabRevealPending[i] = true; // just became available - blink until the player opens it
+			tabWasVisible[i] = visible;
+		}
+
+		tabButtons[i]->setEnabled(visible);
+		if (!visible) continue; // hidden tabs reserve no header space and are never rendered/clickable
+
+		bool pending = tabRevealPending[i] || tabContents[i]->hasPendingNotification();
+		tabButtons[i]->setNotifying(i != activeTabIndex && pending);
 		tabButtons[i]->render(window);
 	}
 
-	if (!tabContents.empty())
+	if (visibilityChanged) updateLayout(); // a tab appeared - redistribute the header strip to include it
+
+	if (!tabContents.empty() && currentlyVisible[activeTabIndex])
 	{
 		TabContent* content = tabContents[activeTabIndex];
+		tabRevealPending[activeTabIndex] = false; // being viewed right now - stop blinking
 
 		float maxScroll = std::max(0.0f, content->getContentHeight() - contentAreaSize.y);
 		scrollOffsets[activeTabIndex] = std::min(scrollOffsets[activeTabIndex], maxScroll); // clamp in case the window grew and there is less to scroll now

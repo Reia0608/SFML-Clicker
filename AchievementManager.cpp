@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 #include "AchievementManager.h"
 
 void AchievementManager::initAchievements()
@@ -61,17 +61,25 @@ void AchievementManager::initAchievements()
 		}, BigNumber(300)));
 
 	achievements.push_back(Achievement("Hoarder", "Collect 3 items",
-		[items]() 
+		[items]()
 		{
 			int total = 0;
 			for (int i = 0; i < items->getItemCount(); i++) total += items->getInventoryCount(i);
-			return total >= 3; 
+			return total >= 3;
 		},
 		BigNumber(1000), "1000 Gold + Gold Multiplier Gain x2 (retroactive)"));
 
 	achievements.push_back(Achievement("Elite Spender", "Purchase 100 shop upgrades",
 		[stats]() { return stats->getShopUpgradesPurchased() >= 100; }, BigNumber(10000),
-		"", "EliteSpenderUnlocked")); // requiredFeature — stays hidden until that key is unlocked
+		"", "EliteSpenderUnlocked")); // requiredFeature ï¿½ stays hidden until that key is unlocked
+
+	// --- item-reward example ---
+	// Grants an actual item instead of (or alongside) gold. itemIndex 0 = "Ruby Emblem" per
+	// ItemManager::initItemDefinitions() - swap the index/count/condition to taste, or delete
+	// this one, it's just here to show the pattern.
+	addItemRewardAchievement("Gem Prospector", "Reach Stage 5",
+		[stats]() { return stats->getHighestStageReached() >= 5; },
+		0, 1); // 1x Ruby Emblem, no gold
 }
 
 void AchievementManager::addThresholdAchievement(const std::string& name, const std::string& description,
@@ -79,6 +87,20 @@ void AchievementManager::addThresholdAchievement(const std::string& name, const 
 {
 	achievements.push_back(Achievement(name, description,
 		[getter, threshold]() { return getter() >= threshold; }, reward, "", requiredFeature));
+}
+
+void AchievementManager::addItemRewardAchievement(const std::string& name, const std::string& description, std::function<bool()> condition,
+	int itemIndex, int itemCount, BigNumber goldReward, std::string requiredFeature)
+{
+	std::string itemName = itemManager->getItemDefinition(itemIndex).name;
+	std::string rewardLabel = (itemCount > 1 ? std::to_string(itemCount) + "x " : "") + itemName;
+
+	if (goldReward > BigNumber(0))
+	{
+		rewardLabel = goldReward.toString() + " Gold + " + rewardLabel;
+	}
+
+	achievements.push_back(Achievement(name, description, condition, goldReward, rewardLabel, requiredFeature, itemIndex, itemCount));
 }
 
 AchievementManager::AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager, UnlockManager* unlockManager)
@@ -92,7 +114,7 @@ void AchievementManager::update()
 	for (auto& achievement : achievements)
 	{
 		if (!achievement.requiredFeature.empty() && !unlockManager->isUnlocked(achievement.requiredFeature))
-			continue; // dormant until its prerequisite feature is unlocked — condition isn't even evaluated
+			continue; // dormant until its prerequisite feature is unlocked ï¿½ condition isn't even evaluated
 
 		if (!achievement.unlocked && achievement.condition())
 		{
@@ -128,7 +150,7 @@ void AchievementManager::setUnlocked(const std::string& name, bool unlocked)
 	{
 		if (achievement.name == name)
 		{
-			achievement.unlocked = unlocked; // no gold granted here, currency is restored separately from the save file
+			achievement.unlocked = unlocked; // no gold/item granted here, currency and inventory are restored separately from the save file
 			return;
 		}
 	}
@@ -146,12 +168,19 @@ bool AchievementManager::claimReward(const std::string& name)
 
 			hero->grantBonusGold(achievement.goldReward);
 
+			if (achievement.itemRewardIndex >= 0 && achievement.itemRewardCount > 0)
+			{
+				for (int i = 0; i < achievement.itemRewardCount; i++)
+				{
+					itemManager->addItem(achievement.itemRewardIndex);
+				}
+			}
+
 			if (onAchievementClaimed)
 			{
 				onAchievementClaimed(achievement);
 			}
 
-			// TODO: as soon as Items are implemented, ItemTab-Callback should be called here
 			// TODO: as soon as Shop unlocks are implemented, ShopTab-Callback should be called here
 			return true;
 		}
@@ -159,7 +188,7 @@ bool AchievementManager::claimReward(const std::string& name)
 	return false;
 }
 
-void AchievementManager::setClaimed(const std::string& name, bool claimed) // restores saved state without granting gold again
+void AchievementManager::setClaimed(const std::string& name, bool claimed) // restores saved state without granting gold/items again
 {
 	for (auto& achievement : achievements)
 	{
@@ -170,5 +199,3 @@ void AchievementManager::setClaimed(const std::string& name, bool claimed) // re
 		}
 	}
 }
-
-

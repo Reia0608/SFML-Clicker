@@ -1,20 +1,20 @@
 [Game]
 version=1
-windowMode=2
-resolutionIndex=3
+windowMode=0
+resolutionIndex=0
 deathAnimationsEnabled=0
-stageNumber=7
+stageNumber=8
 [Hero]
-currency=1020859.002083
-attackPower=110.000000
-goldMultiplier=30.000000
-critUnlocked=1
-critChance=0.035000
-critDamageMultiplier=2.700000
+currency=48933060.301408
+attackPower=182.000000
+goldMultiplier=32.000000
+critUnlocked=0
+critChance=0.000000
+critDamageMultiplier=1.500000
 [Familiar]
 name=3
 unlocked=1
-bonusPhysicalPower=12.000000
+bonusPhysicalPower=18.000000
 bonusElementalPower0=0.000000
 bonusElementalPower1=0.000000
 bonusElementalPower2=0.000000
@@ -25,15 +25,18 @@ bonusElementalPower6=0.000000
 bonusElementalPower7=0.000000
 bonusElementalPower8=0.000000
 bonusElementalPower9=0.000000
-bonusCooldownReduction=5.500000
+bonusCooldownReduction=6.000000
+[FamiliarSlots]
+slotCount=1
+occupied0=1
 [Statistics]
-enemiesDefeated=151
-bossesDefeated=6
-highestStageReached=6
-shopUpgradesPurchased=201
-totalClicks=20476
-playTimeSeconds=1207.064941
-criticalHitsLanded=659
+enemiesDefeated=266
+bossesDefeated=10
+highestStageReached=7
+shopUpgradesPurchased=135
+totalClicks=2182
+playTimeSeconds=2680.396484
+criticalHitsLanded=0
 [Achievements]
 ach=First Blood|1|1
 ach=Slayer Legend|0|0
@@ -42,7 +45,7 @@ ach=Stage Conqueror|0|0
 ach=Stage Master|0|0
 ach=Sharpshooter|0|0
 ach=Big Spender|1|1
-ach=Click Master|1|1
+ach=Click Master|0|0
 ach=Marathon Runner|0|0
 ach=Endurance|0|0
 ach=Gold Rush|1|1
@@ -51,22 +54,23 @@ ach=Speedrunner|1|1
 ach=Collector|1|1
 ach=Hoarder|1|1
 ach=Elite Spender|0|0
+ach=Gem Prospector|1|1
 [Unlocks]
 [Items]
 count=6
-inv0=97
+inv0=2
 inv1=0
-inv2=0
+inv2=2
 inv3=1
-inv4=1
-inv5=1
+inv4=0
+inv5=0
 [Shop]
-attackUpgradeCost=1476998.320378
-goldMultiplierCost=3835021.184669
-critChanceCost=1638400.000000
-critDamageCost=614400.000000
-familiarPhysicalCost=144209.721939
-familiarElementalCost=34398.535680
-familiarCooldownCost=1946195.068359
+attackUpgradeCost=123928.212983
+goldMultiplierCost=8628797.665476
+critChanceCost=200.000000
+critDamageCost=150.000000
+familiarPhysicalCost=19408.896000
+familiarElementalCost=13824.000000
+familiarCooldownCost=1297463.378906
 goldMultiplierIncreaseAmount=1.000000
-goldMultiplierUpgradesPurchased=29
+goldMultiplierUpgradesPurchased=31

@@ -106,6 +106,15 @@
     <ClCompile Include="FamiliarTab.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="LootDropManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="HUD.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FloatingDamageText.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -250,6 +259,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ElementalPower.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="LootDropManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="HUD.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FloatingDamageText.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

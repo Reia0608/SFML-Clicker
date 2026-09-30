@@ -23,7 +23,15 @@ void Familiar::initSprites(std::string idleAnimationAddress, float idleFrameTime
 void Familiar::initFamiliarDPSText()
 {
 	familiarDPSText = new Text("click damage: " + getFamiliarDPS().toString(), "Fonts/arial.ttf");
-	familiarDPSText->setFillColor(sf::Color::Green);
+	// Pale silver-blue - source-identity color for "damage dealt by the active familiar's
+	// auto-attack/abilities", nudged further toward blue than a neutral gray so it stays
+	// distinguishable against grayer future biomes (rocky mountain, castle interior). Deliberately
+	// desaturated, same reasoning as Hero::dpsText's pale gold and Game::passiveFamiliarDPSText's
+	// pale lavender - this trio identifies WHO dealt the damage, leaving vivid/saturated hues free
+	// for whatever ELEMENT is involved later (e.g. a burn-over-time tick shown in vivid red).
+	// Defined as `dpsColor` in Familiar.h so this text and this familiar's floating damage
+	// numbers (see Game.cpp) can never drift apart into two different shades of "familiar blue".
+	familiarDPSText->setFillColor(dpsColor);
 	familiarDPSText->setOutlineColor(sf::Color::Black);
 	familiarDPSText->setOutlineThickness(2.0f);
 	updateFamiliarDPSText();
@@ -185,7 +193,7 @@ void Familiar::executeAttack(FamiliarAttack& attack, sf::Vector2f targetPosition
 	BigNumber elementalDamage = elemental.computeDamage(elementalMultiplierResolver);
 	BigNumber finalDamage = physical + elementalDamage;
 	familiarDPSTracker.recordDamage(finalDamage);
-	if (onDamageDealt) onDamageDealt(finalDamage);
+	if (onDamageDealt) onDamageDealt(finalDamage, elemental.getMask());
 }
 
 void Familiar::update(float dt, sf::Vector2f targetPosition)
@@ -217,7 +225,7 @@ void Familiar::update(float dt, sf::Vector2f targetPosition)
 			BigNumber finalDamage = activeProjectile->getPhysicalDamage() + activeProjectile->getElementalPower().computeDamage(elementalMultiplierResolver);
 
 			familiarDPSTracker.recordDamage(finalDamage);
-			if (onDamageDealt) onDamageDealt(finalDamage); // Game applies the damage to whatever is currently at that spot
+			if (onDamageDealt) onDamageDealt(finalDamage, activeProjectile->getElementalPower().getMask()); // Game applies the damage to whatever is currently at that spot
 			activeProjectile = activeProjectiles.erase(activeProjectile);
 		}
 		else
@@ -283,7 +291,7 @@ bool Familiar::activateManualAttack(size_t attackIndex, sf::Vector2f targetPosit
 	return true;
 }
 
-void Familiar::setOnDamageDealtCallback(std::function<void(BigNumber damage)> callback)
+void Familiar::setOnDamageDealtCallback(std::function<void(BigNumber damage, ElementMask mask)> callback)
 {
 	onDamageDealt = std::move(callback);
 }
@@ -419,10 +427,23 @@ void Familiar::evolveTo(FamiliarType newType)
 void Familiar::updateFamiliarDPSText()
 {
 	familiarDPSText->setString("Familiar DPS: " + getFamiliarDPS().toString());
-	LayoutManager::applyAnchor(*familiarDPSText, Anchor::BottomRight, { -10.0f, -120.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
+	// -160: top of the BottomRight stat stack - this requires a familiar to be actively slotted
+	// (not just unlocked), which happens later than everything below it, including Game::dpsText's
+	// passive DPS line at -120 (unlocks as soon as any familiar is unlocked, no slotting needed).
+	LayoutManager::applyAnchor(*familiarDPSText, Anchor::BottomRight, { -10.0f, -160.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
 }
 
 BigNumber Familiar::getFamiliarDPS() const
 {
 	return familiarDPSTracker.getDPS();
+}
+
+sf::FloatRect Familiar::getDPSTextBounds() const
+{
+	return familiarDPSText->getGlobalBounds();
+}
+
+float Familiar::getAttackCooldownRemaining(size_t attackIndex) const
+{
+	return attackIndex < attacks.size() ? attacks[attackIndex].cooldownRemaining : 0.0f;
 }

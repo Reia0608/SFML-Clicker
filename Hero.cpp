@@ -3,6 +3,7 @@
 #include "LayoutManager.h"
 #include "Randomize.h"
 #include <cmath>
+#include <algorithm>
 
 void Hero::initCurrencyText()
 {
@@ -38,7 +39,12 @@ void Hero::initClickDamageText()
 void Hero::initDPSText()
 {
 	dpsText = new Text("DPS: 0", "Fonts/arial.ttf");
-	dpsText->setFillColor(sf::Color::Cyan);
+	// Pale gold/ivory - source-identity color for "damage dealt by the Hero", deliberately
+	// desaturated so it reads as a stat readout rather than an elemental effect color (see the
+	// matching colors on Familiar::familiarDPSText and Game::dpsText - this is one of three).
+	// clickDamageText below stays pure Red on purpose - it's not part of this scheme, it just
+	// shows current attack power and already matches the Enemy's Red/Orange floating hit numbers.
+	dpsText->setFillColor(sf::Color(255, 235, 200));
 	dpsText->setOutlineColor(sf::Color::Black);
 	dpsText->setOutlineThickness(2.0f);
 	updateDPSText();
@@ -318,4 +324,18 @@ void Hero::resetToDefaults() // mirrors the member initializers in Hero.h / the 
 	critChance = 0.0;
 	critDamageMultiplier = 1.5;
 	updateCurrencyText();
+}
+
+sf::FloatRect Hero::getStatsBounds() const
+{
+	sf::FloatRect currencyBounds = currencyText->getGlobalBounds();
+	sf::FloatRect dpsBounds = dpsText->getGlobalBounds();
+	sf::FloatRect clickBounds = clickDamageText->getGlobalBounds();
+
+	float left = std::min({ currencyBounds.position.x, dpsBounds.position.x, clickBounds.position.x });
+	float top = std::min({ currencyBounds.position.y, dpsBounds.position.y, clickBounds.position.y });
+	float right = std::max({ currencyBounds.position.x + currencyBounds.size.x, dpsBounds.position.x + dpsBounds.size.x, clickBounds.position.x + clickBounds.size.x });
+	float bottom = std::max({ currencyBounds.position.y + currencyBounds.size.y, dpsBounds.position.y + dpsBounds.size.y, clickBounds.position.y + clickBounds.size.y });
+
+	return sf::FloatRect({ left, top }, { right - left, bottom - top });
 }

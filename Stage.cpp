@@ -21,6 +21,17 @@ void Stage::initStageText()
 	this->updateStageText();
 }
 
+void Stage::initEnemyInfoText()
+{
+	enemyInfoText = new Text("", "Fonts/arial.ttf");
+	enemyInfoText->setCharacterSize(18);
+	enemyInfoText->setFillColor(sf::Color::White);
+	enemyInfoText->setOutlineColor(sf::Color::Black);
+	enemyInfoText->setOutlineThickness(1.0f);
+	enemyInfoText->setPosition({ (windowSize.x - uiPanelWidth) / 2.0f, 50.0f });
+	this->setEnemyInfoText("");
+}
+
 void Stage::initMapSize()
 {
 	// Not accurate, but it works for now. Adding 1 to the size to account for the last tile that is not fully visible on the screen.
@@ -328,10 +339,17 @@ void Stage::updateStageText()
 	LayoutManager::applyAnchor(*stageText, Anchor::TopCenter, { 0.0f, 20.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
 }
 
+void Stage::setEnemyInfoText(const std::string& text)
+{
+	enemyInfoText->setString(text);
+	LayoutManager::applyAnchor(*enemyInfoText, Anchor::TopCenter, { 0.0f, 50.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
+}
+
 Stage::Stage()
 {
 	this->initStageNumber();
 	this->initStageText();
+	this->initEnemyInfoText();
 	this->initMapSize();
 	this->initTileMap();
 }
@@ -347,6 +365,7 @@ Stage::~Stage()
 		if (tex) delete tex;
 	}
 	delete stageText;
+	delete enemyInfoText;
 }
 
 int Stage::getStageNumber() const
@@ -449,6 +468,7 @@ void Stage::drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& act
 	// Third layer: HUD elements, drawn last so nothing from the world layers below can ever cover
 	// them. The stage number lives here too, alongside any other play-area trackers Game passes in.
 	window->draw(*stageText);
+	window->draw(*enemyInfoText);
 	for (const auto& hud : hudElements)
 	{
 		hud.draw();

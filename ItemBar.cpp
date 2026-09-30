@@ -86,3 +86,9 @@ void ItemBar::render(sf::RenderWindow* window)
 		window->draw(*slots[i].countText);
 	}
 }
+
+sf::Vector2f ItemBar::getSlotPosition(int index) const
+{
+	if (index < 0 || index >= static_cast<int>(slots.size())) return { 0.0f, 0.0f };
+	return slots[index].icon->getPosition(); // the icon's own drawn position, not layoutPosition (which the count text uses, offset 25px above the icon)
+}

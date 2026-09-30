@@ -6,25 +6,27 @@
 
 class ItemBar
 {
-	private:
-		sf::RectangleShape background;
-		ItemManager* itemManager;   // non-owning, part of Game
+private:
+	sf::RectangleShape background;
+	ItemManager* itemManager;   // non-owning, part of Game
 
-		struct ItemSlot
-		{
-			sf::Sprite* icon = NULL;
-			Text* countText = NULL;
-			sf::Vector2f layoutPosition = { 0,0 };
-		};
-		std::vector<ItemSlot> slots;
+	struct ItemSlot
+	{
+		sf::Sprite* icon = NULL;
+		Text* countText = NULL;
+		sf::Vector2f layoutPosition = { 0,0 };
+	};
+	std::vector<ItemSlot> slots;
 
-		void initSlots();
-		void updateLayout();
+	void initSlots();
+	void updateLayout();
 
-	public:
-		ItemBar(ItemManager* itemManager);
-		~ItemBar();
+public:
+	ItemBar(ItemManager* itemManager);
+	~ItemBar();
 
-		void onResize();
-		void render(sf::RenderWindow* window);
+	void onResize();
+	void render(sf::RenderWindow* window);
+
+	sf::Vector2f getSlotPosition(int index) const; // world position of the given item's icon (its on-screen slot in the bar) - used by LootDropManager as the fly-to target for item drops. Returns {0,0} if index is out of range.
 };

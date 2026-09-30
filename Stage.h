@@ -51,9 +51,11 @@ private:
 	float familiarZoneFraction = 0.30f;          // left strip reserved for familiars, as a fraction of the play area width - widen this as more familiars line up on the left
 	float centerBandHalfWidthFraction = 0.15f;   // half-width of the middle band kept clear of decorations (hero/enemy fight zone), as a fraction of the play area width
 	Text* stageText;
+	Text* enemyInfoText; // shown just below stageText: current enemy's name + progress (or "Boss: <name>")
 
 	void initStageNumber();
 	void initStageText();
+	void initEnemyInfoText();
 	void initMapSize();
 	void initTileTextures();
 	void initDecorations();
@@ -97,4 +99,5 @@ public:
 	void drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& actors = {}, const std::vector<HudElement>& hudElements = {}); // draws tiles, then decorations and actors interleaved back-to-front by ground-Y
 
 	void updateTexts();
+	void setEnemyInfoText(const std::string& text); // Game calls this every frame with the current enemy's name/progress, or "" when no enemy is on the field
 };

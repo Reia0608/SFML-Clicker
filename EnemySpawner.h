@@ -15,24 +15,24 @@ private:
 	std::vector<EnemyType> enemyTypeList = {
 EnemyType("Textures/PNG/Slime1/Idle/Slime1_Idle_Front_full.png", {64, 64}, BigNumber(10), 0.15f, "Textures/PNG/Slime1/Hurt/Slime1_Hurt_full.png", {64, 64}, 0.15f,
 	"Textures/PNG/Slime1/Death/Slime1_Death_Front_full.png", {64, 64}, 0.15f, BigNumber(5))
-	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)), //0 - green slime, weak to fire
+	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)).setName("Green Slime"), //0 - green slime, weak to fire
 EnemyType("Textures/PNG/Slime2/Idle/Slime2_Idle_Front_full.png", {64, 64}, BigNumber(15), 0.12f, "Textures/PNG/Slime2/Hurt/Slime2_Hurt_full.png", {64, 64}, 0.12f,
 	"Textures/PNG/Slime2/Death/Slime2_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(6))
-	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)), //1 - undead slime, weak to fire
+	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)).setName("Undead Slime"), //1 - undead slime, weak to fire
 EnemyType("Textures/PNG/Slime3/Idle/Slime3_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime3/Hurt/Slime3_Hurt_full.png", {64, 64}, 0.12f,
 	"Textures/PNG/Slime3/Death/Slime3_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(7))
-	.setElementalAffinity(ElementalAffinity().setResistance(Fire)), //2 - lava slime, resistant to fire
+	.setElementalAffinity(ElementalAffinity().setResistance(Fire)).setName("Lava Slime"), //2 - lava slime, resistant to fire
 EnemyType("Textures/PNG/Slime4/Idle/Slime4_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime4/Hurt/Slime4_Hurt_full.png", {64, 64}, 0.12f,
 "Textures/PNG/Slime4/Death/Slime4_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(8))
-	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)), //3 - ice slime, weak to fire
+	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)).setName("Ice Slime"), //3 - ice slime, weak to fire
 EnemyType("Textures/PNG/Slime5/Idle/Slime5_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime5/Hurt/Slime5_Hurt_full.png", {64, 64}, 0.12f,
-	"Textures/PNG/Slime5/Death/Slime5_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(9)), //4 - neutral, no elemental profile set yet
+	"Textures/PNG/Slime5/Death/Slime5_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(9)).setName("Electric Slime"), //4 - neutral, no elemental profile set yet
 	};
 	EnemyType bossType = EnemyType(
 		"Textures/PNG/Slime6/Idle/Slime6_Idle_Front_full.png", { 64, 64 }, BigNumber(10), 0.15f,
 		"Textures/PNG/Slime6/Hurt/Slime6_Hurt_full.png", { 64, 64 }, 0.15f,
 		"Textures/PNG/Slime6/Death/Slime6_Death_Front_full.png", { 64, 64 }, 0.15f, BigNumber(100)
-	).setElementalAffinity(ElementalAffinity().setResistance(Fire, 0.75)); // example: bosses can have their own, differently-tuned profile
+	).setElementalAffinity(ElementalAffinity().setResistance(Fire, 0.75)).setName("Slime King"); // example: bosses can have their own, differently-tuned profile
 
 	Enemy* enemy;
 	Statistics* statistics; // non-owning
@@ -43,6 +43,8 @@ EnemyType("Textures/PNG/Slime5/Idle/Slime5_Idle_Front_full.png", {64, 64}, BigNu
 	int currentStageNumber = 1;
 
 	std::function<void(bool wasDefeated)> onBossEncounterEndedCallback;
+	std::function<void(BigNumber amount, sf::Vector2f position)> onGoldDroppedCallback;   // fired from finishEnemyDefeat() whenever an enemy leaves gold behind - Game wires this to LootDropManager::onGoldDropped
+	std::function<void(int itemIndex, sf::Vector2f position)> onItemDroppedCallback;      // fired from finishEnemyDefeat() whenever a boss item roll succeeds - Game wires this to LootDropManager::onItemDropped
 
 	BigNumber computeScaledHealth(BigNumber baseHealth, int exponent) const;
 	BigNumber computeScaledGold(BigNumber baseGold, int exponent) const;
@@ -50,7 +52,7 @@ EnemyType("Textures/PNG/Slime5/Idle/Slime5_Idle_Front_full.png", {64, 64}, BigNu
 	void spawnRegularEnemy();
 	void spawnBoss();
 
-	BigNumber finishEnemyDefeat();
+	void finishEnemyDefeat(); // no longer returns the gold reward - it fires onGoldDroppedCallback/onItemDroppedCallback instead, so LootDropManager can animate the drop before the reward is actually granted
 
 public:
 	EnemySpawner(Statistics* statistics, ItemManager* itemManager);
@@ -59,7 +61,7 @@ public:
 	void onResize();
 	void render(sf::RenderWindow* window);
 
-	bool handleClick(BigNumber damage, bool isCritical);
+	bool handleClick(BigNumber damage, bool isCritical, sf::Color baseColor = sf::Color::Red, ElementMask elementMask = 0); // baseColor identifies the damage's source (Hero/familiar/passive) in its floating number; defaults to Red (Hero's own color) so the Hero's own call site didn't need to change. elementMask, when non-zero, overrides baseColor with that element's gradient (see Enemy::showDamage) - defaults to 0 so the Hero's and passive-damage's call sites don't need to change either.
 	bool getIsDead() const;
 	bool getIsDeathAnimationFinished() const;
 
@@ -67,14 +69,19 @@ public:
 	float getEnemyGroundY() const { return enemy ? enemy->getSprites()->getGroundY() : 0.0f; } // Y of the enemy's feet on the ground - Stage uses this to depth-sort it against decorations
 
 	BigNumber getEnemyGold() const;
+	std::string getEnemyName() const; // display name of the current enemy, empty if none is on the field
+	int getEnemyIndexInStage() const; // 0-based index of the current regular enemy within the stage (out of enemiesPerStage); meaningless during a boss encounter
+	bool getIsCurrentEnemyBoss() const; // true if the enemy currently on the field is the boss
 	double getEnemyElementalMultiplier(ElementMask attackElementMask) const; // 1.0 if no enemy on field or attack is elementless. Kept for any other existing caller (e.g. a weakness/resistance UI indicator) - blends every element in the mask into one averaged multiplier.
 	double getEnemyElementalMultiplierForElement(Elements element) const;    // 1.0 if no enemy on field. Resolves ONE element's own weakness/resistance exactly, with no averaging - used by Familiar so a multi-element attack scales each element correctly (see ElementalPower::computeDamage).
 	sf::Vector2f getEnemyPosition() const; // used by Familiar to aim its projectiles
 	void setEnemyHealth(BigNumber value); // debug only, needs Enemy::setHealth()
-	BigNumber update(float dt);
+	void update(float dt); // no longer returns the gold reward - see finishEnemyDefeat()
 
 	int getCurrentStageNumber() const;
 	void setCurrentStageNumber(int newStageNumber); // restores stage progress after loading; respawns the current encounter scaled to the new stage
 
 	void setOnBossEncounterEndedCallback(std::function<void(bool wasDefeated)> callback);
+	void setOnGoldDroppedCallback(std::function<void(BigNumber amount, sf::Vector2f position)> callback);
+	void setOnItemDroppedCallback(std::function<void(int itemIndex, sf::Vector2f position)> callback);
 };

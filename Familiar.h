@@ -40,7 +40,7 @@ private:
 	std::vector<FamiliarAttack> attacks; // runtime instances, built from FamiliarType::attacks at construction/evolveTo
 
 	std::vector<Projectile> activeProjectiles; // projectiles currently in flight, from any ranged attack
-	std::function<void(BigNumber damage)> onDamageDealt; // fired once per landed hit - melee-instant or projectile-arrival alike
+	std::function<void(BigNumber damage, ElementMask mask)> onDamageDealt; // fired once per landed hit - melee-instant or projectile-arrival alike - mask is 0 for a purely physical hit
 	std::function<double(Elements)> elementalMultiplierResolver; // resolves ONE element's own weakness/resistance multiplier against whatever enemy is currently on the field. Falls back to 1.0 (no bonus/penalty) if never set or no enemy is present.
 
 	// radial cooldown indicator (Donut, fills clockwise from the top; countdown text in the middle)
@@ -83,7 +83,7 @@ public:
 	bool isManualAttackReady(size_t attackIndex) const;
 	bool activateManualAttack(size_t attackIndex, sf::Vector2f targetPosition); // false (no-op) if not ready or not manual
 
-	void setOnDamageDealtCallback(std::function<void(BigNumber damage)> callback); // called once per landed hit
+	void setOnDamageDealtCallback(std::function<void(BigNumber damage, ElementMask mask)> callback); // called once per landed hit
 	void setElementalMultiplierResolver(std::function<double(Elements)> resolver); // wired by Game to EnemySpawner::getEnemyElementalMultiplierForElement - resolves one element at a time, so a multi-element attack scales each element by its own multiplier rather than an average
 	BigNumber rollDamage() const; // physical + elemental of the primary auto-attack (base + bonus) - a rough "power level" preview, no resistances applied
 
@@ -113,4 +113,13 @@ public:
 
 	void updateFamiliarDPSText(); // public so ShopTab can access it to update
 	BigNumber getFamiliarDPS() const;
+
+	sf::FloatRect getDPSTextBounds() const; // familiarDPSText's current on-screen bounds - used by Game to size its HUD backing panel. Only meaningful while this familiar is unlocked and actively slotted, both of which Game already checks before ever calling this (drawHUD()'s own callers are gated the same way)
+
+	float getAttackCooldownRemaining(size_t attackIndex) const; // used in HUD
+
+	// Pale silver-blue - this familiar's source-identity color. Used both for familiarDPSText
+	// (see initFamiliarDPSText()) and passed to EnemySpawner::handleClick() by Game whenever this
+	// familiar lands a hit, so its floating damage numbers on the enemy match its own HUD line.
+	static constexpr sf::Color dpsColor = sf::Color(190, 210, 235);
 };
