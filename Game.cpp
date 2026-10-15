@@ -17,7 +17,7 @@ const std::string Game::saveFilePath = "Save/savegame.json";
 
 void Game::initWindow()
 {
-	title = "SFML Clicker by Sami Ounis";
+	title = "My Familiars by Sami Ounis";
 	vm = sf::VideoMode(sf::Vector2u(windowSize));
 	window = new sf::RenderWindow(vm, title);
 	window->setFramerateLimit(getFrameRate());
@@ -98,51 +98,48 @@ void Game::pollEvents()
 			if (mousePressed->button == sf::Mouse::Button::Left)
 			{
 				sf::Vector2f clickPos = window->mapPixelToCoords(mousePressed->position);
-				if (clickPos.x < gameAreaWidth)
+
+				// A HUD manual-attack button takes priority over everything below it - consuming
+				// the click here means it never also reaches tabbedPanel or deals the hero's own
+				// click damage.
+				bool consumedByHud = clickPos.x < gameAreaWidth && hud->handleClick(clickPos);
+				if (!consumedByHud)
 				{
-					if (hud->handleClick(clickPos))
-					{
-						// consumed by a HUD button - skip recordClick/tabbedPanel/enemy hit entirely
-					}
-					else if (clickPos.x < gameAreaWidth)
+					if (clickPos.x < gameAreaWidth)
 					{
 						statistics->recordClick();
-						if (!tabbedPanel->handleClick(clickPos) && clickPos.x < gameAreaWidth)
-						{
-							// ...existing enemy-hit block, unchanged
-						}
 					}
-				}
 
-				if (!tabbedPanel->handleClick(clickPos) && clickPos.x < gameAreaWidth)
-				{
-					bool wasCritical = false;
-					BigNumber damage = hero->rollDamage(wasCritical);
-					bool hitEnemy = enemySpawner->handleClick(damage, wasCritical);
-					if (hitEnemy)
+					if (!tabbedPanel->handleClick(clickPos) && clickPos.x < gameAreaWidth)
 					{
-						if (hero->getHasAttack2played())
+						bool wasCritical = false;
+						BigNumber damage = hero->rollDamage(wasCritical);
+						bool hitEnemy = enemySpawner->handleClick(damage, wasCritical);
+						if (hitEnemy)
 						{
-							hero->setHasAttack2played(false);
-							hero->playAttack1Animation();
-							hero->setHasAttack1played(true);
-						}
-						else if (hero->getHasAttack1played())
-						{
-							hero->setHasAttack1played(false);
-							hero->playAttack2Animation();
-							hero->setHasAttack2played(true);
-						}
-						else
-						{
-							hero->playAttack1Animation();
-							hero->setHasAttack1played(true);
-						}
+							if (hero->getHasAttack2played())
+							{
+								hero->setHasAttack2played(false);
+								hero->playAttack1Animation();
+								hero->setHasAttack1played(true);
+							}
+							else if (hero->getHasAttack1played())
+							{
+								hero->setHasAttack1played(false);
+								hero->playAttack2Animation();
+								hero->setHasAttack2played(true);
+							}
+							else
+							{
+								hero->playAttack1Animation();
+								hero->setHasAttack1played(true);
+							}
 
-						hero->recordDamageDealt(damage);
-						if (wasCritical)
-						{
-							statistics->recordCriticalHit();
+							hero->recordDamageDealt(damage);
+							if (wasCritical)
+							{
+								statistics->recordCriticalHit();
+							}
 						}
 					}
 				}
@@ -168,20 +165,36 @@ void Game::initUI()
 	tabbedPanel = new TabbedPanel();
 	shopTab = new ShopTab(hero, statistics, familiar, unlockManager);
 	tabbedPanel->addTab("Shop", shopTab);
-	familiarTab = new FamiliarTab(hero, itemManager, unlockManager);
+	familiarTab = new FamiliarTab(hero, itemManager, unlockManager, statistics,
+		ownedFamiliars[FireDragon], ownedFamiliars[WaterDragon], ownedFamiliars[WindDragon]);
 	tabbedPanel->addTab("Familiars", familiarTab, [this]() { return familiar && familiar->isUnlocked(); });
 
-	familiarTab->onEvolveRedBabyDragon = [this]()
-		{
-			if (!familiar) return;
-			familiar->evolveTo(familiarTypeList[1]); // FireDragon (Juvenile) - the evolution of BabyFireDragon
+	// Generalized evolve wiring, used by every lineage's self-updating evolve button (see
+	// FamiliarTab::addFamiliarEvolveButton()). FamiliarTab only knows the NAME of the next stage
+	// (from its own stage-order list) - Game is the one that owns familiarTypeList, so it's the
+	// one that resolves that name into the actual FamiliarType data and performs evolveTo().
+	familiarTab->onEvolveFamiliar = [this](Familiar* target, Age nextAge)
+	{
+		int typeIndex = findFamiliarTypeIndex(target->getName(), nextAge);
+		if (typeIndex < 0) return; // shouldn't happen - FamiliarTab already checked isFamiliarStageAvailable before spending anything - but fail safe rather than indexing out of range
+		target->evolveTo(familiarTypeList[typeIndex]);
 
-			// The new stage's auto-attack has its own baseCooldown/minCooldownLimit, so the
-			// familiar's carried-over bonusCooldownReduction may no longer be enough to have hit
-			// the new floor even if it had hit the old one - re-check visibility so the cooldown
-			// reduction button reappears if there's room to buy more.
-			if (shopTab) shopTab->refreshVisibility();
-		};
+		// The new stage's auto-attack has its own baseCooldown/minCooldownLimit, so a carried-over
+		// bonusCooldownReduction may no longer be enough to have hit the new floor even if it had
+		// hit the old one - re-check FamiliarTab's own visibility rules so that lineage's cooldown
+		// button reappears if there's room to buy more (this used to check shopTab, back when the
+		// cooldown button still lived there - see Step 3).
+		if (familiarTab) familiarTab->refreshButtonVisibility();
+	};
+
+	// Lets FamiliarTab know whether the NEXT stage it wants to evolve into actually has data in
+	// familiarTypeList yet, BEFORE it lets the player pay for it - stages beyond what's currently
+	// defined (e.g. Adult/Ancient, for now) stay hidden rather than silently charging Emblems for
+	// an evolution that can't actually happen.
+	familiarTab->isFamiliarStageAvailable = [this](FamiliarName name, Age age)
+	{
+		return findFamiliarTypeIndex(name, age) >= 0;
+	};
 
 	// Familiar slots - Game owns the actual roster/slot state, FamiliarTab only displays it and
 	// reports the player's intent back through these (see the "Familiar slots" block in Game.h).
@@ -196,26 +209,55 @@ void Game::initUI()
 	achievementsTab = new AchievementsTab(achievementManager);
 	tabbedPanel->addTab("Achievements", achievementsTab);
 	achievementManager->onAchievementUnlocked = [this](const Achievement& achievement)
+	{
+		achievementsTab->markPending();
+	};
+
+	achievementManager->onAchievementClaimed = [this](const Achievement& achievement)
+	{
+		if (achievement.name == "Hoarder")
 		{
-			achievementsTab->markPending();
-		};
+			shopTab->increaseGoldMultiplierGain(2.0f);
+		}
 
-	achievementManager->onAchievementClaimed = [this](const Achievement& achievement) // NEW
+		if (achievement.name == "Juvenile Flame")
 		{
-			if (achievement.name == "Hoarder")
-			{
-				shopTab->increaseGoldMultiplierGain(2.0f);
-			}
+			// Doesn't grant the Fireball attack itself - just reveals FamiliarTab's purchase
+			// button for it (see FamiliarTab.cpp's addAttackUnlockButton() call). The button's
+			// own click handler sets the separate "FireDragonFireballUnlocked" key once bought.
+			unlockManager->unlock("FireDragonFireballPurchasable");
+			if (familiarTab) familiarTab->markPending(); // flash the Familiars tab button - same pulse as when it first became available
+		}
 
-			/*if (achievement.name == "Familiar Bond")
-			{
-				unlockManager->unlock();
-			}*/
+		if (achievement.name == "Juvenile Tide")
+		{
+			unlockManager->unlock("WaterDragonBubbleStreamPurchasable");
+			if (familiarTab) familiarTab->markPending();
+		}
 
-			// This is the single place to wire "claiming X unlocks feature Y" � for both shop buttons and achievement chains:
-			// if (achievement.name == "Big Spender") unlockManager->unlock("EliteSpenderUnlocked");
-			// if (achievement.name == "Veteran Slayer") unlockManager->unlock("SomeShopUpgradeKey");
-		};
+		if (achievement.name == "Juvenile Gale")
+		{
+			unlockManager->unlock("WindDragonWindSwipesPurchasable");
+			if (familiarTab) familiarTab->markPending();
+		}
+
+		// FamiliarTab's purchase buttons only recompute their own visibility when something
+		// inside FamiliarTab triggers it (a slot/evolve purchase, a resize) - claiming an
+		// achievement here never touches FamiliarTab at all, so without this the newly-
+		// unlocked button wouldn't appear until the next resize or slot change. Unconditional
+		// (not just for "Juvenile Flame") so any future achievement that unlocks a
+		// FamiliarTab purchase button doesn't need its own reminder to add this call.
+		if (familiarTab) familiarTab->refreshButtonVisibility();
+
+		/*if (achievement.name == "Familiar Bond")
+		{
+			unlockManager->unlock();
+		}*/
+
+		// This is the single place to wire "claiming X unlocks feature Y" for both shop buttons and achievement chains:
+		// if (achievement.name == "Big Spender") unlockManager->unlock("EliteSpenderUnlocked");
+		// if (achievement.name == "Veteran Slayer") unlockManager->unlock("SomeShopUpgradeKey");
+	};
 
 	tabbedPanel->addTab("Statistics", new StatisticsTab(hero, statistics));
 	optionsTab = new OptionsTab(this, this);
@@ -223,7 +265,7 @@ void Game::initUI()
 	debugTab = new DebugTab(this);
 	tabbedPanel->addTab("Debug", debugTab);
 
-	hud = new HUD([this]() { return enemySpawner->getEnemyPosition(); });
+	hud = new HUD([this]() { return enemySpawner->getEnemyPosition(); }, unlockManager);
 }
 
 void Game::initItemManager()
@@ -231,52 +273,83 @@ void Game::initItemManager()
 	itemManager = new ItemManager();
 }
 
-void Game::initFamiliar(FamiliarName name)
+void Game::initFamiliars()
 {
-	switch (name)
+	// Every species currently playable, each starting at its Baby stage - add one more entry here
+	// whenever a new species gets its own familiarTypeList entries (see the big comment above
+	// ownedFamiliars in Game.h for what else goes with it).
+	const std::vector<FamiliarName> species = { FireDragon, WaterDragon, WindDragon };
+
+	for (FamiliarName speciesName : species)
 	{
-	case BabyFireDragon:
-		familiar = new Familiar(familiarTypeList[0]);
-		familiar->setOnDamageDealtCallback([this](BigNumber damage, ElementMask mask) // fires once per landed hit - melee-instant or projectile-arrival alike
+		int typeIndex = findFamiliarTypeIndex(speciesName, Age::Baby);
+		if (typeIndex < 0) continue; // this species' baby stage isn't defined in familiarTypeList (yet) - leave its slot nullptr rather than crash
+
+		Familiar* f = new Familiar(familiarTypeList[typeIndex]);
+		f->setOnDamageDealtCallback([this](BigNumber damage, ElementMask mask) // fires once per landed hit - melee-instant or projectile-arrival alike
 			{
-				enemySpawner->handleClick(damage, false, Familiar::dpsColor, mask); // familiar attacks (auto or manual) don't crit for now; colored to match familiarDPSText unless mask carries an element, in which case the element's gradient wins (see Enemy::showDamage)
+				enemySpawner->handleClick(damage, false, Familiar::dpsColor, mask); // familiar attacks (auto or manual) don't crit for now; colored to match activeFamiliarDPSText unless mask carries an element, in which case the element's gradient wins (see Enemy::showDamage)
 			});
-		familiar->setElementalMultiplierResolver([this](Elements element)
+		f->setElementalMultiplierResolver([this](Elements element)
 			{
 				return enemySpawner->getEnemyElementalMultiplierForElement(element);
 			});
-		break;
-	default: break;
+
+		ownedFamiliars[static_cast<size_t>(speciesName)] = f;
 	}
+
+	familiar = ownedFamiliars[static_cast<size_t>(FireDragon)]; // see the member comment in Game.h - temporary alias until Fire's remaining special cases are migrated onto the roster
 }
 
-int Game::findFamiliarTypeIndex(FamiliarName name) const
+int Game::findFamiliarTypeIndex(FamiliarName name, Age age) const
 {
 	for (size_t i = 0; i < familiarTypeList.size(); i++)
 	{
-		if (familiarTypeList[i].name == name) return static_cast<int>(i);
+		if (familiarTypeList[i].name == name && familiarTypeList[i].age == age) return static_cast<int>(i);
 	}
-	return -1; // saved stage isn't defined in familiarTypeList (yet) - e.g. an Ice dragon line the current build doesn't have entries for
+	return -1; // that (species, stage) pair isn't defined in familiarTypeList (yet) - e.g. an Ice dragon, or an Adult/Ancient stage, the current build doesn't have entries for
+}
+
+std::string Game::familiarSaveName(FamiliarName name)
+{
+	switch (name)
+	{
+		case FireDragon: return "FireDragon";
+		case WaterDragon: return "WaterDragon";
+		case WindDragon: return "WindDragon";
+		case EarthDragon: return "EarthDragon";
+		case IceDragon: return "IceDragon";
+		default: return ""; // None, or anything else - callers treat an empty name as "no familiar"
+	}
+}
+
+FamiliarName Game::familiarNameFromSaveName(const std::string& saveName)
+{
+	if (saveName == "FireDragon") return FireDragon;
+	if (saveName == "WaterDragon") return WaterDragon;
+	if (saveName == "WindDragon") return WindDragon;
+	if (saveName == "EarthDragon") return EarthDragon;
+	if (saveName == "IceDragon") return IceDragon;
+	return None; // empty (no occupant), or a name this build doesn't recognize
 }
 
 int Game::getUnlockedFamiliarCount() const
 {
-	// Only one familiar exists today, so this is 0 or 1. See the TODO on the declaration for
-	// what this should become once there's an actual roster of familiars to sum over.
-	return (familiar && familiar->isUnlocked()) ? 1 : 0;
+	int count = 0;
+	for (Familiar* f : ownedFamiliars)
+	{
+		if (f && f->isUnlocked()) count++;
+	}
+	return count;
 }
 
 int Game::getFamiliarEvolutionCount(const Familiar* f) const
 {
 	if (!f || !f->isUnlocked()) return 0;
 
-	int typeIndex = findFamiliarTypeIndex(f->getName());
-	if (typeIndex < 0) return 0; // current stage isn't in familiarTypeList (yet) - treat as no evolution bonus rather than guessing
-
 	// Age (PublicVariables.h) is declared Baby, Juvenile, Adult, Ancient with no explicit numbering, so
 	// the compiler assigns Baby=0, Juvenile=1, Adult=2 - which happens to already be exactly
-	// "how many times this familiar has evolved" for every stage defined today (BabyFireDragon
-	// is Age::Baby=0, FireDragon is Age::Juvenile=1). Reusing that ordinal here avoids adding a
+	// "how many times this familiar has evolved". Reusing that ordinal here avoids adding a
 	// dedicated evolution counter anywhere.
 	//
 	// This only holds as long as two things stay true:
@@ -291,14 +364,17 @@ int Game::getFamiliarEvolutionCount(const Familiar* f) const
 	//     by not registering that evolution at all).
 	// If either assumption stops holding, switch to a dedicated evolutionIndex field on
 	// FamiliarType/Familiar instead (see the version of this feature before this comment).
-	return static_cast<int>(familiarTypeList[typeIndex].age);
+	return static_cast<int>(f->getAge());
 }
 
 int Game::getTotalFamiliarEvolutionCount() const
 {
-	// Sums getFamiliarEvolutionCount() across every unlocked familiar. Only one familiar to sum
-	// today; see the TODO on the declaration for how this should generalize.
-	return getFamiliarEvolutionCount(familiar);
+	int total = 0;
+	for (Familiar* f : ownedFamiliars)
+	{
+		total += getFamiliarEvolutionCount(f); // already 0 for a locked/null familiar, no need to check isUnlocked() again here
+	}
+	return total;
 }
 
 double Game::computeFamiliarPassiveDamagePerSecond() const
@@ -344,10 +420,10 @@ void Game::updateHUDStatPanelLayout()
 		bounds = unionRects(bounds, passiveFamiliarDPSText->getGlobalBounds());
 	}
 
-	for (Familiar* activeFamiliar : familiarSlots) // familiar auto-attack DPS - only slotted familiars are ever drawn/relevant here, same as in render()
+	bool anyFamiliarActive = std::any_of(familiarSlots.begin(), familiarSlots.end(), [](Familiar* f) { return f != nullptr; });
+	if (anyFamiliarActive) // combined active-familiar DPS - same unlock gate as its visibility in render()
 	{
-		if (!activeFamiliar) continue;
-		bounds = unionRects(bounds, activeFamiliar->getDPSTextBounds());
+		bounds = unionRects(bounds, activeFamiliarDPSText->getGlobalBounds());
 	}
 
 	hudStatPanel.setPosition({ bounds.position.x - hudStatPanelPadding, bounds.position.y - hudStatPanelPadding });
@@ -358,7 +434,7 @@ void Game::initPassiveFamiliarDPSText()
 {
 	passiveFamiliarDPSText = new Text("Passive Familiar DPS: " + passiveFamiliarDPSTracker.getDPS().toString(), "Fonts/arial.ttf");
 	// Pale lavender - source-identity color for "passive familiar damage", the third of the trio
-	// alongside Hero::dpsText (pale gold) and Familiar::familiarDPSText (pale silver-blue). See
+	// alongside Hero::dpsText (pale gold) and Game::activeFamiliarDPSText (pale silver-blue). See
 	// the comments there for why these are deliberately desaturated rather than vivid hues.
 	passiveFamiliarDPSText->setFillColor(passiveDPSColor);
 	passiveFamiliarDPSText->setOutlineColor(sf::Color::Black);
@@ -369,10 +445,37 @@ void Game::initPassiveFamiliarDPSText()
 void Game::updatePassiveFamiliarDPSText()
 {
 	passiveFamiliarDPSText->setString("Passive Familiar DPS: " + passiveFamiliarDPSTracker.getDPS().toString());
-	// -120: sits below Familiar::familiarDPSText's -160 - passive damage unlocks as soon as any
+	// -120: sits below Game::activeFamiliarDPSText's -160 - passive damage unlocks as soon as any
 	// familiar is unlocked, while Familiar DPS additionally requires that familiar to be slotted
 	// (a later step), so this line appears first/lower in the stack.
 	LayoutManager::applyAnchor(*passiveFamiliarDPSText, Anchor::BottomRight, { -10.0f, -120.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
+}
+
+void Game::initActiveFamiliarDPSText()
+{
+	activeFamiliarDPSText = new Text("Familiar DPS: " + BigNumber(0).toString(), "Fonts/arial.ttf");
+	// Pale silver-blue - same source-identity color every slotted familiar's own DPS text used to
+	// use individually (Familiar::dpsColor) - now shared by the one combined line that replaces
+	// all of them, so floating damage numbers on the enemy still match this HUD line's color.
+	activeFamiliarDPSText->setFillColor(Familiar::dpsColor);
+	activeFamiliarDPSText->setOutlineColor(sf::Color::Black);
+	activeFamiliarDPSText->setOutlineThickness(2.0f);
+	updateActiveFamiliarDPSText();
+}
+
+void Game::updateActiveFamiliarDPSText()
+{
+	BigNumber total(0);
+	for (Familiar* activeFamiliar : familiarSlots)
+	{
+		if (activeFamiliar) total = total + activeFamiliar->getFamiliarDPS();
+	}
+	activeFamiliarDPSText->setString("Familiar DPS: " + total.toString());
+	// -160: top of the BottomRight stat stack - this requires a familiar to be actively slotted
+	// (not just unlocked), which happens later than everything below it, including
+	// passiveFamiliarDPSText's passive DPS line at -120 (unlocks as soon as any familiar is
+	// unlocked, no slotting needed).
+	LayoutManager::applyAnchor(*activeFamiliarDPSText, Anchor::BottomRight, { -10.0f, -160.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
 }
 
 void Game::updateFamiliarPassiveDamage(float dt)
@@ -415,24 +518,38 @@ std::string Game::getFamiliarSlotLabel(int slotIndex) const
 	Familiar* occupant = familiarSlots[slotIndex];
 	if (!occupant) return "";
 
-	// Same trick as getFamiliarEvolutionCount(): look the occupant's current stage up in
-	// familiarTypeList rather than storing a separate display-name field anywhere.
-	int typeIndex = findFamiliarTypeIndex(occupant->getName());
+	// Looks the occupant's current (species, stage) pair up in familiarTypeList rather than
+	// storing a separate display-name field anywhere.
+	int typeIndex = findFamiliarTypeIndex(occupant->getName(), occupant->getAge());
 	return typeIndex >= 0 ? familiarTypeList[typeIndex].label : "Familiar"; // fallback if its current stage somehow isn't in familiarTypeList
+}
+
+std::vector<Familiar*> Game::getAvailableFamiliarsForSlotting() const
+{
+	// Every owned (Fire/Water/Wind), unlocked, currently-unassigned familiar, in ownedFamiliars'
+	// fixed lineage order. Both getAvailableFamiliarNamesForSlotting() (what FamiliarTab's picker
+	// shows) and assignFamiliarToSlot() (what a picked row actually resolves to) derive from this
+	// SAME list, so a pickedIndex the picker handed back always means the same familiar here -
+	// they'd silently disagree if each rebuilt its own filtered list independently.
+	std::vector<Familiar*> available;
+	for (Familiar* f : ownedFamiliars)
+	{
+		if (f && f->isUnlocked() && !isFamiliarInAnySlot(f))
+		{
+			available.push_back(f);
+		}
+	}
+	return available;
 }
 
 std::vector<std::string> Game::getAvailableFamiliarNamesForSlotting() const
 {
 	std::vector<std::string> names;
-
-	// TODO: once multiple owned familiars exist, iterate over all of them here instead of just
-	// the single `familiar` member (see the matching TODOs on the passive-damage helpers above).
-	if (familiar && familiar->isUnlocked() && !isFamiliarInAnySlot(familiar))
+	for (Familiar* f : getAvailableFamiliarsForSlotting())
 	{
-		int typeIndex = findFamiliarTypeIndex(familiar->getName());
+		int typeIndex = findFamiliarTypeIndex(f->getName(), f->getAge());
 		names.push_back(typeIndex >= 0 ? familiarTypeList[typeIndex].label : "Familiar");
 	}
-
 	return names;
 }
 
@@ -450,26 +567,68 @@ void Game::assignFamiliarToSlot(int slotIndex, int pickedIndex)
 	if (slotIndex < 0 || slotIndex >= static_cast<int>(familiarSlots.size())) return;
 	if (familiarSlots[slotIndex] != nullptr) return; // already occupied - FamiliarTab only opens the picker for empty slots, this is just a safety net
 
-	std::vector<std::string> available = getAvailableFamiliarNamesForSlotting();
+	std::vector<Familiar*> available = getAvailableFamiliarsForSlotting();
 	if (pickedIndex < 0 || pickedIndex >= static_cast<int>(available.size())) return;
 
-	// TODO: once multiple owned familiars exist, resolve `pickedIndex` against that full list
-	// instead of assuming it can only ever mean `familiar` (see getAvailableFamiliarNamesForSlotting()).
-	if (familiar && familiar->isUnlocked() && !isFamiliarInAnySlot(familiar))
-	{
-		familiarSlots[slotIndex] = familiar;
-	}
+	familiarSlots[slotIndex] = available[pickedIndex];
+	repositionSlottedFamiliars();
 }
 
 void Game::unassignFamiliarSlot(int slotIndex)
 {
 	if (slotIndex < 0 || slotIndex >= static_cast<int>(familiarSlots.size())) return;
 	familiarSlots[slotIndex] = nullptr; // the familiar itself is untouched (still unlocked, keeps its bonuses/evolution) - it just goes back to the available pool
+	repositionSlottedFamiliars();
+}
+
+void Game::repositionSlottedFamiliars()
+{
+	int totalActive = 0;
+	for (Familiar* f : familiarSlots)
+	{
+		if (f) totalActive++;
+	}
+
+	int row = 0;
+	for (Familiar* f : familiarSlots)
+	{
+		if (!f) continue; // empty slots don't consume a row - occupants stay packed together rather than leaving gaps
+		f->setSlotPosition(row, totalActive);
+		row++;
+	}
+}
+
+void Game::updateFamiliarFeatureGates()
+{
+	// "BabyFireDragonActive" is the requiredFeature on the "Juvenile Flame" achievement (see
+	// AchievementManager::initAchievements()) - that achievement should stay out of the
+	// Achievements tab entirely until the player actually has a live Baby Fire Dragon to care
+	// about evolving, not just an unlocked-but-benched one. The isUnlocked() check up front is
+	// just to skip the (cheap, but pointless) repeat unlock() calls once this is already set.
+	if (!unlockManager->isUnlocked("BabyFireDragonActive") && familiar && familiar->isUnlocked() && isFamiliarInAnySlot(familiar))
+	{
+		unlockManager->unlock("BabyFireDragonActive");
+	}
+
+	// Same two-step gating for Water and Wind - see the matching "Juvenile Tide"/"Juvenile Gale"
+	// achievements in AchievementManager.cpp and the onAchievementClaimed wiring in initUI().
+	Familiar* water = ownedFamiliars[WaterDragon];
+	if (!unlockManager->isUnlocked("BabyWaterDragonActive") && water && water->isUnlocked() && isFamiliarInAnySlot(water))
+	{
+		unlockManager->unlock("BabyWaterDragonActive");
+	}
+
+	Familiar* wind = ownedFamiliars[WindDragon];
+	if (!unlockManager->isUnlocked("BabyWindDragonActive") && wind && wind->isUnlocked() && isFamiliarInAnySlot(wind))
+	{
+		unlockManager->unlock("BabyWindDragonActive");
+	}
 }
 
 void Game::initAchievements()
 {
-	achievementManager = new AchievementManager(hero, statistics, familiar, itemManager, unlockManager);
+	achievementManager = new AchievementManager(hero, statistics, familiar, itemManager, unlockManager,
+		ownedFamiliars[WaterDragon], ownedFamiliars[WindDragon]);
 }
 
 void Game::initSaveIndicator()
@@ -522,7 +681,10 @@ void Game::onWindowResized(sf::Vector2u newSize)
 
 	stage->onResize();
 	hero->onResize();
-	familiar->onResize();
+	for (Familiar* activeFamiliar : familiarSlots) // every currently slotted familiar, not just Fire - unslotted ones aren't drawn, so they don't need repositioning
+	{
+		if (activeFamiliar) activeFamiliar->onResize();
+	}
 	enemySpawner->onResize();
 	itemBar->onResize();
 	tabbedPanel->onResize();
@@ -540,6 +702,7 @@ void Game::update()
 	float dt = times.getDeltaTime();
 
 	statistics->updatePlayTime(dt);
+	updateFamiliarFeatureGates(); // before achievementManager->update(), so a requiredFeature it flips on can be seen by an achievement's condition() this same frame
 	achievementManager->update(); // checks every frame if any achievements have been unlocked
 
 	stage->updateTexts();
@@ -570,6 +733,7 @@ void Game::update()
 		if (!activeFamiliar) continue; // empty slot
 		activeFamiliar->update(dt, enemySpawner->getEnemyPosition()); // ticks cooldowns, auto-fires ready auto-attacks, advances in-flight projectiles
 	}
+	updateActiveFamiliarDPSText(); // combines every slotted familiar's own DPS into the one HUD line - must run after the loop above so each familiar's tracker is current for this frame
 	updateFamiliarPassiveDamage(dt); // deals passive damage once per elapsed second, active as soon as a familiar is unlocked - independent of the slot loop above
 
 	hud->sync(familiarSlots);
@@ -611,6 +775,11 @@ void Game::render()
 		hudElements.push_back({ [activeFamiliar, this]() { activeFamiliar->drawHUD(window); } });
 		hudElements.push_back({ [this]() { hud->render(window); } });
 	}
+	bool anyFamiliarActive = std::any_of(familiarSlots.begin(), familiarSlots.end(), [](Familiar* f) { return f != nullptr; });
+	if (anyFamiliarActive) // one combined "Familiar DPS" line for every slotted familiar, instead of each one drawing its own overlapping text
+	{
+		hudElements.push_back({ [this]() { window->draw(*activeFamiliarDPSText); } });
+	}
 	// hudElements.push_back({ [this]() { enemySpawner->drawHUD(window); } }); // once EnemySpawner splits out its damage/health text the same way
 
 	stage->drawMap(window, actors, hudElements);
@@ -632,7 +801,10 @@ void Game::refreshLayoutAfterWindowChange()
 
 	stage->onResize();
 	hero->onResize();
-	familiar->onResize();
+	for (Familiar* activeFamiliar : familiarSlots) // every currently slotted familiar, not just Fire - unslotted ones aren't drawn, so they don't need repositioning
+	{
+		if (activeFamiliar) activeFamiliar->onResize();
+	}
 	enemySpawner->onResize();
 	itemBar->onResize();
 	tabbedPanel->onResize();
@@ -674,11 +846,11 @@ Game::Game()
 	initStage();
 	initHero();
 
-	// TODO: Initialization depends on unlocked familiars
-	initFamiliar(BabyFireDragon);
+	initFamiliars(); // builds one locked Familiar per species (Fire/Water/Wind) - see Game.h's ownedFamiliars comment
 	passiveFamiliarDPSTracker.setWindowDuration(passiveDamageTickInterval); // keep the DPS window matched to the tick interval - see the member comment in Game.h
 	initHUDStatPanel();
 	initPassiveFamiliarDPSText();
+	initActiveFamiliarDPSText();
 	initStatistics();
 	initItemManager(); // needs to be called before initEnemySpawner()/initUI()
 	initUnlockManager(); // before initAchievements()
@@ -721,9 +893,10 @@ Game::~Game()
 	delete itemManager;
 	delete lootDropManager;
 	delete saveIndicator;
-	delete familiar;
+	for (Familiar* f : ownedFamiliars) delete f; // deletes Fire/Water/Wind - `familiar` is just an alias into this same array, not deleted separately
 	delete unlockManager;
 	delete passiveFamiliarDPSText;
+	delete activeFamiliarDPSText;
 	delete hud;
 }
 
@@ -850,6 +1023,21 @@ void Game::saveToFile(const std::string& path)
 		ofs << "version=1\n";
 		ofs << "windowMode=" << static_cast<int>(currentWindowMode) << '\n';
 		ofs << "resolutionIndex=" << currentResolutionIndex << '\n';
+		// Actual current window pixel size - separate from resolutionIndex above, which only
+		// tracks which PRESET was last explicitly chosen (Options tab dropdown). A manual
+		// drag-resize or maximize/restore never touches resolutionIndex (there's no matching
+		// preset for an arbitrary size), so without this the window would silently snap back to
+		// its last preset size on the next load instead of staying exactly how it was left.
+		ofs << "windowWidth=" << windowSize.x << '\n';
+		ofs << "windowHeight=" << windowSize.y << '\n';
+		// Window position on screen - skipped for Fullscreen, same reasoning as windowWidth/Height
+		// above (no border to drag, and the OS always places a fullscreen window at (0,0) anyway).
+		if (currentWindowMode != WindowMode::Fullscreen)
+		{
+			sf::Vector2i windowPos = window->getPosition();
+			ofs << "windowPosX=" << windowPos.x << '\n';
+			ofs << "windowPosY=" << windowPos.y << '\n';
+		}
 		ofs << "deathAnimationsEnabled=" << (deathAnimationsEnabled ? true : false) << '\n';
 		ofs << "stageNumber=" << stage->getStageNumber() << '\n';
 
@@ -862,33 +1050,41 @@ void Game::saveToFile(const std::string& path)
 		ofs << "critChance=" << hero->getCritChance() << '\n';
 		ofs << "critDamageMultiplier=" << hero->getCritDamageMultiplier() << '\n';
 
-		// Familiars
-		if (familiar)
+		// Familiars - one [Familiar:X] section per species (X = "FireDragon"/"WaterDragon"/...,
+		// see familiarSaveName()), identical fields in each. No "name=" field is needed - the
+		// section header already names the species unambiguously, and ownedFamiliars is indexed
+		// by species directly, so there's nothing left to disambiguate. Only the purchased BONUS
+		// stats and current `age` (evolution stage) are saved - base stats are fully determined by
+		// (species, age) via familiarTypeList, so they never need saving, and evolving no longer
+		// invalidates anything that was saved (see Familiar::evolveTo).
+		for (size_t i = 0; i < ownedFamiliars.size(); i++)
 		{
-			ofs << "[Familiar]\n";
-			ofs << "name=" << (familiar ? familiar->getName() : None) << '\n';
-			ofs << "unlocked=" << (familiar && familiar->isUnlocked() ? 1 : 0) << '\n';
-			// Only the purchased BONUS stats are saved here - base stats are fully determined by
-			// `name` (which evolution stage) via familiarTypeList, so they never need saving, and
-			// evolving no longer invalidates anything that was saved (see Familiar::evolveTo).
-			ofs << "bonusPhysicalPower=" << familiar->getBonusPhysicalPower().toApproxDouble() << '\n';
-			for (int i = 0; i < static_cast<int>(ElementCount); i++)
+			Familiar* f = ownedFamiliars[i];
+			if (!f) continue;
+
+			ofs << "[Familiar:" << familiarSaveName(static_cast<FamiliarName>(i)) << "]\n";
+			ofs << "unlocked=" << (f->isUnlocked() ? 1 : 0) << '\n';
+			ofs << "age=" << static_cast<int>(f->getAge()) << '\n';
+			ofs << "bonusPhysicalPower=" << f->getBonusPhysicalPower().toApproxDouble() << '\n';
+			for (int e = 0; e < static_cast<int>(ElementCount); e++)
 			{
-				ofs << "bonusElementalPower" << i << "=" << familiar->getBonusElementalPower(static_cast<Elements>(i)).toApproxDouble() << '\n';
+				ofs << "bonusElementalPower" << e << "=" << f->getBonusElementalPower(static_cast<Elements>(e)).toApproxDouble() << '\n';
 			}
-			ofs << "bonusCooldownReduction=" << familiar->getBonusCooldownReduction() << '\n';
+			ofs << "bonusCooldownReduction=" << f->getBonusCooldownReduction() << '\n';
 		}
 
-		// Familiar slots - separate from [Familiar] above, since this is about WHERE a familiar
-		// is placed, not the familiar's own stats/evolution.
+		// Familiar slots - separate from [Familiar:X] above, since this is about WHERE a familiar
+		// is placed, not its own stats/evolution. Each slot stores WHICH species occupies it (its
+		// familiarSaveName(), or an empty value for an empty slot) rather than a bare occupied
+		// bool, so any owned species - not just Fire - can be restored to its slot.
 		ofs << "[FamiliarSlots]\n";
 		ofs << "slotCount=" << getFamiliarSlotCount() << '\n';
+		if (familiarTab) ofs << "slotCost=" << familiarTab->getSlotCost() << '\n'; // the escalating Amber cost of the NEXT slot - without this, reloading would always offer Slot N+1 at the Slot 1 price
 		for (int i = 0; i < getFamiliarSlotCount(); i++)
 		{
-			// TODO: once multiple owned familiars exist, this needs a real per-familiar
-			// identifier instead of a bool - today there's only ever one possible occupant
-			// (`familiar`), so "is this slot occupied at all" is the only thing worth saving.
-			ofs << "occupied" << i << "=" << (familiarSlots[i] != nullptr ? 1 : 0) << '\n';
+			Familiar* occupant = familiarSlots[i];
+			std::string occupantName = occupant ? familiarSaveName(occupant->getName()) : "";
+			ofs << "occupant" << i << "=" << occupantName << '\n';
 		}
 
 		// Statistics
@@ -933,11 +1129,25 @@ void Game::saveToFile(const std::string& path)
 			ofs << "goldMultiplierCost=" << shopTab->getGoldMultiplierCost().toApproxDouble() << '\n';
 			ofs << "critChanceCost=" << shopTab->getCritChanceCost().toApproxDouble() << '\n';
 			ofs << "critDamageCost=" << shopTab->getCritDamageCost().toApproxDouble() << '\n';
-			ofs << "familiarPhysicalCost=" << shopTab->getFamiliarPhysicalAttackCost().toApproxDouble() << '\n';
-			ofs << "familiarElementalCost=" << shopTab->getFamiliarElementalAttackCost().toApproxDouble() << '\n';
-			ofs << "familiarCooldownCost=" << shopTab->getFamiliarCooldownReductionCost().toApproxDouble() << '\n';
 			ofs << "goldMultiplierIncreaseAmount=" << shopTab->getGoldMultiplierIncreaseAmount() << '\n';
 			ofs << "goldMultiplierUpgradesPurchased=" << shopTab->getGoldMultiplierUpgradesPurchased() << '\n';
+		}
+		// Every lineage's three familiar-upgrade costs, moved to FamiliarTab along with their
+		// buttons (see Step 3). Fire's keep their original key names so an old save's Fire prices
+		// still load correctly; Water/Wind get the same shape under their own lineage-prefixed keys.
+		if (familiarTab)
+		{
+			ofs << "familiarPhysicalCost=" << familiarTab->getFirePhysicalUpgradeCost().toApproxDouble() << '\n';
+			ofs << "familiarElementalCost=" << familiarTab->getFireElementalUpgradeCost().toApproxDouble() << '\n';
+			ofs << "familiarCooldownCost=" << familiarTab->getFireCooldownUpgradeCost().toApproxDouble() << '\n';
+
+			ofs << "familiarWaterPhysicalCost=" << familiarTab->getWaterPhysicalUpgradeCost().toApproxDouble() << '\n';
+			ofs << "familiarWaterElementalCost=" << familiarTab->getWaterElementalUpgradeCost().toApproxDouble() << '\n';
+			ofs << "familiarWaterCooldownCost=" << familiarTab->getWaterCooldownUpgradeCost().toApproxDouble() << '\n';
+
+			ofs << "familiarWindPhysicalCost=" << familiarTab->getWindPhysicalUpgradeCost().toApproxDouble() << '\n';
+			ofs << "familiarWindElementalCost=" << familiarTab->getWindElementalUpgradeCost().toApproxDouble() << '\n';
+			ofs << "familiarWindCooldownCost=" << familiarTab->getWindCooldownUpgradeCost().toApproxDouble() << '\n';
 		}
 
 		ofs.close();
@@ -975,6 +1185,19 @@ void Game::loadFromFile(const std::string& path)
 		// Temporary storage
 		int fileWindowMode = static_cast<int>(currentWindowMode);
 		int fileResolutionIndex = currentResolutionIndex;
+		// Defaults to the window's current size, so an older save file without these keys (from
+		// before manual resize/maximize was tracked) leaves it untouched - same "absent key changes
+		// nothing" idea as every other value in this function.
+		double fileWindowWidth = windowSize.x;
+		double fileWindowHeight = windowSize.y;
+		// No sensible "current position" default exists here the same way size/mode have one -
+		// (0,0) is a legitimate real position (and a negative one too, on a multi-monitor setup
+		// with a monitor to the left of the primary), so presence is tracked explicitly instead of
+		// inferring it from the value itself. Left unmoved (not even recentered) unless BOTH are found.
+		bool fileHasWindowPosX = false;
+		bool fileHasWindowPosY = false;
+		int fileWindowPosX = 0;
+		int fileWindowPosY = 0;
 		bool fileDeathAnimationsEnabled = deathAnimationsEnabled;
 		int fileStageNumber = stage->getStageNumber();
 
@@ -985,21 +1208,45 @@ void Game::loadFromFile(const std::string& path)
 		double heroCritChance = 0.0;
 		double heroCritDmgMult = 1.5;
 
-		// Defaults to current values, so older save files without a [Familiar] section leave it untouched (New)
-		bool familiarUnlocked = familiar && familiar->isUnlocked();
-		FamiliarName familiarName = BabyFireDragon; // default to BabyFireDragon if no familiar is saved
-		double familiarBonusPhysicalPower = familiar ? familiar->getBonusPhysicalPower().toApproxDouble() : 0.0;
-		std::array<double, ElementCount> familiarBonusElementalPower{};
-		for (int i = 0; i < static_cast<int>(ElementCount); i++)
+		// Defaults to current values, so an older save (or one missing a species' section
+		// entirely) leaves that species untouched - same "absent data changes nothing" idea the
+		// rest of this function already uses. Indexed directly by FamiliarName, same as
+		// ownedFamiliars - no separate `name` field is needed here, unlike before this species/
+		// stage split: which species a given entry means is now just its own array index.
+		struct SavedFamiliarData
 		{
-			familiarBonusElementalPower[i] = familiar ? familiar->getBonusElementalPower(static_cast<Elements>(i)).toApproxDouble() : 0.0;
+			bool unlocked = false;
+			Age age = Age::Baby;
+			double bonusPhysicalPower = 0.0;
+			std::array<double, ElementCount> bonusElementalPower{};
+			float bonusCooldownReduction = 0.0f;
+		};
+		std::array<SavedFamiliarData, static_cast<size_t>(FamiliarNameCount)> savedFamiliars;
+		for (size_t i = 0; i < ownedFamiliars.size(); i++)
+		{
+			Familiar* f = ownedFamiliars[i];
+			if (!f) continue;
+
+			savedFamiliars[i].unlocked = f->isUnlocked();
+			savedFamiliars[i].age = f->getAge();
+			savedFamiliars[i].bonusPhysicalPower = f->getBonusPhysicalPower().toApproxDouble();
+			for (int e = 0; e < static_cast<int>(ElementCount); e++)
+			{
+				savedFamiliars[i].bonusElementalPower[e] = f->getBonusElementalPower(static_cast<Elements>(e)).toApproxDouble();
+			}
+			savedFamiliars[i].bonusCooldownReduction = f->getBonusCooldownReduction();
 		}
-		float familiarBonusCooldownReduction = familiar ? familiar->getBonusCooldownReduction() : 0.0f;
 
 		// Defaults to empty (0 slots), so older save files without a [FamiliarSlots] section
 		// just leave the player with no slots - same "absent section changes nothing new" idea
 		// as the other defaults above, since 0 also happens to be this feature's starting state.
-		std::vector<bool> fileFamiliarSlotOccupied;
+		// Each entry is "" (empty slot) or a familiarSaveName() identifying the occupant species.
+		std::vector<std::string> fileFamiliarSlotOccupant;
+
+		// Defaults to the current value, so an older save file without this key (from before slot
+		// cost escalated) leaves it untouched - same "absent key changes nothing" idea as every
+		// other price default in this function.
+		int fileSlotCost = familiarTab->getSlotCost();
 
 		int enemiesDefeated = 0;
 		int bossesDefeated = 0;
@@ -1022,9 +1269,18 @@ void Game::loadFromFile(const std::string& path)
 		double shopGoldMultiplierCost = shopTab->getGoldMultiplierCost().toApproxDouble();
 		double shopCritChanceCost = shopTab->getCritChanceCost().toApproxDouble();
 		double shopCritDamageCost = shopTab->getCritDamageCost().toApproxDouble();
-		double shopFamiliarPhysicalAttackCost = shopTab->getFamiliarPhysicalAttackCost().toApproxDouble();
-		double shopFamiliarElementalAttackCost = shopTab->getFamiliarElementalAttackCost().toApproxDouble();
-		double shopFamiliarCooldownCost = shopTab->getFamiliarCooldownReductionCost().toApproxDouble();
+		// Fire's three upgrade costs moved to FamiliarTab (see Step 3) - still defaulted to
+		// their current value here so an older save file without these keys leaves them untouched,
+		// same reasoning as every other price above.
+		double shopFamiliarPhysicalAttackCost = familiarTab->getFirePhysicalUpgradeCost().toApproxDouble();
+		double shopFamiliarElementalAttackCost = familiarTab->getFireElementalUpgradeCost().toApproxDouble();
+		double shopFamiliarCooldownCost = familiarTab->getFireCooldownUpgradeCost().toApproxDouble();
+		double shopFamiliarWaterPhysicalCost = familiarTab->getWaterPhysicalUpgradeCost().toApproxDouble();
+		double shopFamiliarWaterElementalCost = familiarTab->getWaterElementalUpgradeCost().toApproxDouble();
+		double shopFamiliarWaterCooldownCost = familiarTab->getWaterCooldownUpgradeCost().toApproxDouble();
+		double shopFamiliarWindPhysicalCost = familiarTab->getWindPhysicalUpgradeCost().toApproxDouble();
+		double shopFamiliarWindElementalCost = familiarTab->getWindElementalUpgradeCost().toApproxDouble();
+		double shopFamiliarWindCooldownCost = familiarTab->getWindCooldownUpgradeCost().toApproxDouble();
 		double shopGoldMultiplierIncreaseAmount = shopTab->getGoldMultiplierIncreaseAmount();
 		int shopGoldMultiplierUpgradesPurchased = shopTab->getGoldMultiplierUpgradesPurchased();
 
@@ -1047,6 +1303,10 @@ void Game::loadFromFile(const std::string& path)
 			{
 				if (key == "windowMode") fileWindowMode = std::stoi(value);
 				else if (key == "resolutionIndex") fileResolutionIndex = std::stoi(value);
+				else if (key == "windowWidth") fileWindowWidth = std::stod(value);
+				else if (key == "windowHeight") fileWindowHeight = std::stod(value);
+				else if (key == "windowPosX") { fileWindowPosX = std::stoi(value); fileHasWindowPosX = true; }
+				else if (key == "windowPosY") { fileWindowPosY = std::stoi(value); fileHasWindowPosY = true; }
 				else if (key == "deathAnimationsEnabled") fileDeathAnimationsEnabled = (std::stoi(value) != false);
 				else if (key == "stageNumber") fileStageNumber = std::stoi(value);
 			}
@@ -1059,18 +1319,23 @@ void Game::loadFromFile(const std::string& path)
 				else if (key == "critChance") heroCritChance = std::stod(value);
 				else if (key == "critDamageMultiplier") heroCritDmgMult = std::stod(value);
 			}
-			else if (section == "Familiar")
+			else if (section.rfind("Familiar:", 0) == 0) // e.g. "Familiar:FireDragon", "Familiar:WaterDragon", "Familiar:WindDragon"
 			{
-				if (key == "name") familiarName = static_cast<FamiliarName>(std::stoi(value));
-				else if (key == "unlocked") familiarUnlocked = (std::stoi(value) != 0);
-				else if (key == "bonusPhysicalPower") familiarBonusPhysicalPower = std::stod(value);
-				else if (key == "bonusCooldownReduction") familiarBonusCooldownReduction = std::stof(value);
-				else if (key.rfind("bonusElementalPower", 0) == 0) // e.g. "bonusElementalPower0", "bonusElementalPower1", ...
+				FamiliarName species = familiarNameFromSaveName(section.substr(std::string("Familiar:").size()));
+				if (species != None) // recognized species - anything else (a future species an older build wrote) is silently skipped, same "leave it untouched" spirit as everything else here
 				{
-					int elementIndex = std::stoi(key.substr(std::string("bonusElementalPower").size()));
-					if (elementIndex >= 0 && elementIndex < static_cast<int>(ElementCount))
+					SavedFamiliarData& saved = savedFamiliars[static_cast<size_t>(species)];
+					if (key == "unlocked") saved.unlocked = (std::stoi(value) != 0);
+					else if (key == "age") saved.age = static_cast<Age>(std::stoi(value));
+					else if (key == "bonusPhysicalPower") saved.bonusPhysicalPower = std::stod(value);
+					else if (key == "bonusCooldownReduction") saved.bonusCooldownReduction = std::stof(value);
+					else if (key.rfind("bonusElementalPower", 0) == 0) // e.g. "bonusElementalPower0", "bonusElementalPower1", ...
 					{
-						familiarBonusElementalPower[elementIndex] = std::stod(value);
+						int elementIndex = std::stoi(key.substr(std::string("bonusElementalPower").size()));
+						if (elementIndex >= 0 && elementIndex < static_cast<int>(ElementCount))
+						{
+							saved.bonusElementalPower[elementIndex] = std::stod(value);
+						}
 					}
 				}
 			}
@@ -1079,13 +1344,14 @@ void Game::loadFromFile(const std::string& path)
 				if (key == "slotCount")
 				{
 					int cnt = std::stoi(value);
-					fileFamiliarSlotOccupied.assign(cnt, false);
+					fileFamiliarSlotOccupant.assign(cnt, "");
 				}
-				else if (key.rfind("occupied", 0) == 0) // e.g. "occupied0", "occupied1", ...
+				else if (key == "slotCost") fileSlotCost = std::stoi(value);
+				else if (key.rfind("occupant", 0) == 0) // e.g. "occupant0", "occupant1", ...
 				{
-					int idx = std::stoi(key.substr(std::string("occupied").size()));
-					if (idx >= 0 && idx < static_cast<int>(fileFamiliarSlotOccupied.size()))
-						fileFamiliarSlotOccupied[idx] = (std::stoi(value) != 0);
+					int idx = std::stoi(key.substr(std::string("occupant").size()));
+					if (idx >= 0 && idx < static_cast<int>(fileFamiliarSlotOccupant.size()))
+						fileFamiliarSlotOccupant[idx] = value;
 				}
 			}
 			else if (section == "Statistics")
@@ -1140,6 +1406,12 @@ void Game::loadFromFile(const std::string& path)
 				else if (key == "familiarPhysicalCost") shopFamiliarPhysicalAttackCost = std::stod(value);
 				else if (key == "familiarElementalCost") shopFamiliarElementalAttackCost = std::stod(value);
 				else if (key == "familiarCooldownCost") shopFamiliarCooldownCost = std::stod(value);
+				else if (key == "familiarWaterPhysicalCost") shopFamiliarWaterPhysicalCost = std::stod(value);
+				else if (key == "familiarWaterElementalCost") shopFamiliarWaterElementalCost = std::stod(value);
+				else if (key == "familiarWaterCooldownCost") shopFamiliarWaterCooldownCost = std::stod(value);
+				else if (key == "familiarWindPhysicalCost") shopFamiliarWindPhysicalCost = std::stod(value);
+				else if (key == "familiarWindElementalCost") shopFamiliarWindElementalCost = std::stod(value);
+				else if (key == "familiarWindCooldownCost") shopFamiliarWindCooldownCost = std::stod(value);
 				else if (key == "goldMultiplierIncreaseAmount") shopGoldMultiplierIncreaseAmount = std::stod(value);
 				else if (key == "goldMultiplierUpgradesPurchased") shopGoldMultiplierUpgradesPurchased = std::stoi(value);
 			}
@@ -1150,7 +1422,26 @@ void Game::loadFromFile(const std::string& path)
 		// Apply loaded values where possible
 		// Window settings
 		setWindowMode(static_cast<WindowMode>(fileWindowMode));
-		setResolutionIndex(fileResolutionIndex);
+		setResolutionIndex(fileResolutionIndex); // both calls above already (re)created the native window at a PRESET size
+
+		// Then, if the saved size doesn't just match that preset (i.e. the window was manually
+		// resized or maximized/restored since), snap it to the exact saved pixel size on top -
+		// skipped for Fullscreen, which always fills the desktop resolution and has no window
+		// border to drag/maximize in the first place.
+		if (currentWindowMode != WindowMode::Fullscreen && fileWindowWidth > 0.0 && fileWindowHeight > 0.0)
+		{
+			sf::Vector2u savedWindowSize(static_cast<unsigned int>(fileWindowWidth), static_cast<unsigned int>(fileWindowHeight));
+			window->setSize(savedWindowSize);
+			onWindowResized(savedWindowSize); // recomputes windowSize/layout to match, same as a live drag-resize or maximize/restore would
+		}
+
+		// Window position - independent of the size restore above (an old save might have one
+		// without the other), same Fullscreen exclusion.
+		if (currentWindowMode != WindowMode::Fullscreen && fileHasWindowPosX && fileHasWindowPosY)
+		{
+			window->setPosition(sf::Vector2i(fileWindowPosX, fileWindowPosY));
+		}
+
 		setDeathAnimationsEnabled(fileDeathAnimationsEnabled);
 
 		// Stage
@@ -1208,57 +1499,88 @@ void Game::loadFromFile(const std::string& path)
 				hero->increaseCritDamage(heroCritDmgMult - hero->getCritDamageMultiplier());
 		}
 
-		// Familiars: unlock if saved as unlocked
-		if (familiar && familiarUnlocked && !familiar->isUnlocked())
+		// Familiars: restore each species' unlock/bonus-stat/evolution state in place. Every
+		// ownedFamiliars[i] was already constructed back in Game() (so ShopTab/FamiliarTab/
+		// AchievementManager/its callbacks could all be wired to it) - so if the save says it
+		// should be further along, we unlock/evolve that SAME instance rather than replacing it.
+		// We deliberately do NOT call initFamiliars() again here: that would allocate brand new
+		// Familiar objects, leak the originals (nothing currently calls delete on the old
+		// pointers before overwriting them), and leave every already-wired pointer still pointing
+		// at the now-orphaned originals instead of the reloaded ones.
+		bool anyFireJustUnlocked = false;
+		for (size_t i = 0; i < ownedFamiliars.size(); i++)
 		{
-			familiar->unlock();
-			shopTab->refreshVisibility(); // replaces setFamiliarButtonActive(false) / setFamiliarButtonsActive(true)
-			familiar->setBonusPhysicalPower(BigNumber(familiarBonusPhysicalPower));
-			for (int i = 0; i < static_cast<int>(ElementCount); i++)
-			{
-				familiar->setBonusElementalPower(static_cast<Elements>(i), BigNumber(familiarBonusElementalPower[i]));
-			}
-			familiar->setBonusCooldownReduction(familiarBonusCooldownReduction);
-		}
+			Familiar* f = ownedFamiliars[i];
+			if (!f) continue;
+			const SavedFamiliarData& saved = savedFamiliars[i];
 
-		// Restore the familiar's saved evolution stage. `familiar` was already constructed as
-		// BabyFireDragon back in Game() (so ShopTab/AchievementManager/its callbacks could all be
-		// wired to it) - so if the save says it should be further along, we evolve that SAME
-		// instance in place via evolveTo(), same as FamiliarTab's evolve button does. We
-		// deliberately do NOT call initFamiliar() again here: that would allocate a brand new
-		// Familiar object, leak the original (nothing currently calls delete on the old pointer
-		// before overwriting it), and leave ShopTab/AchievementManager/etc. still pointing at the
-		// now-orphaned original instead of the reloaded one.
-		if (familiar && familiar->getName() != familiarName)
-		{
-			int typeIndex = findFamiliarTypeIndex(familiarName);
-			if (typeIndex >= 0)
+			if (saved.unlocked)
 			{
-				familiar->evolveTo(familiarTypeList[typeIndex]);
-			}
-			// else: this save was written by a build with a familiar line (e.g. the Ice dragons)
-			// that isn't in familiarTypeList yet - leave the familiar at its current stage rather
-			// than silently doing nothing or indexing out of range.
-		}
-
-		// Restore familiar slots. `familiarSlots` is rebuilt to the saved slot count, then the
-		// (single) familiar is placed into whichever slot was saved as occupied. Since there's
-		// only one possible occupant today, only the FIRST occupied flag found actually gets a
-		// familiar assigned - see the matching TODO on saveToFile(). This must run after the
-		// unlock/evolution restoration just above, since it depends on familiar->isUnlocked().
-		familiarSlots.assign(fileFamiliarSlotOccupied.size(), nullptr);
-		if (familiar && familiar->isUnlocked())
-		{
-			for (size_t i = 0; i < fileFamiliarSlotOccupied.size(); i++)
-			{
-				if (fileFamiliarSlotOccupied[i])
+				if (!f->isUnlocked())
 				{
-					familiarSlots[i] = familiar;
-					break; // only one familiar exists to assign - ignore any further occupied flags
+					f->unlock();
+					if (static_cast<FamiliarName>(i) == FireDragon) anyFireJustUnlocked = true; // ShopTab's unlock button needs a direct nudge below - it's the one unlock button not already covered by familiarTab->refreshButtonVisibility()
 				}
+
+				// Restored every time the save says this familiar is unlocked - not just on the
+				// locked->unlocked transition above - so loading a different/older save file mid-session
+				// (e.g. via OptionsTab's Load button) also overwrites whatever bonus stats this familiar
+				// already has from the current session, instead of silently keeping them.
+				f->setBonusPhysicalPower(BigNumber(saved.bonusPhysicalPower));
+				for (int e = 0; e < static_cast<int>(ElementCount); e++)
+				{
+					f->setBonusElementalPower(static_cast<Elements>(e), BigNumber(saved.bonusElementalPower[e]));
+				}
+				f->setBonusCooldownReduction(saved.bonusCooldownReduction);
+			}
+
+			if (f->getAge() != saved.age)
+			{
+				int typeIndex = findFamiliarTypeIndex(f->getName(), saved.age);
+				if (typeIndex >= 0)
+				{
+					f->evolveTo(familiarTypeList[typeIndex]);
+				}
+				// else: this save was written by a build with a stage (e.g. Adult/Ancient) that
+				// isn't in familiarTypeList yet - leave it at its current stage rather than
+				// silently doing nothing or indexing out of range.
 			}
 		}
-		if (familiarTab) familiarTab->refreshSlotButtons(); // slot state just changed outside FamiliarTab's own click handlers - make sure its displayed list catches up
+
+		if (anyFireJustUnlocked) shopTab->refreshVisibility(); // replaces setFamiliarButtonActive(false) / setFamiliarButtonsActive(true)
+
+		// Every restored familiar above bypassed its own buttons' click handlers entirely, so
+		// their displayed labels/visibility are still showing whatever was current before
+		// loading - refresh all of them in one pass. Each of these three already loops over
+		// every species' buttons (see Steps 3/4), so this covers Fire/Water/Wind together.
+		if (familiarTab)
+		{
+			familiarTab->refreshEvolveButtonLabels();
+			familiarTab->refreshUpgradeButtonLabels();
+			familiarTab->refreshButtonVisibility();
+		}
+
+		// Restore familiar slots. Each saved slot names WHICH species occupies it (see
+		// saveToFile()), so this must run after the unlock restoration just above, since it
+		// depends on isUnlocked() already being true for whichever species it restores.
+		familiarSlots.assign(fileFamiliarSlotOccupant.size(), nullptr);
+		for (size_t i = 0; i < fileFamiliarSlotOccupant.size(); i++)
+		{
+			FamiliarName species = familiarNameFromSaveName(fileFamiliarSlotOccupant[i]);
+			if (species == None) continue; // empty slot, or a species this build doesn't recognize
+
+			Familiar* occupant = ownedFamiliars[static_cast<size_t>(species)];
+			if (occupant && occupant->isUnlocked())
+			{
+				familiarSlots[i] = occupant;
+			}
+		}
+		repositionSlottedFamiliars(); // this bypassed assignFamiliarToSlot() entirely, so nothing else positioned the restored occupant(s) on screen
+		if (familiarTab)
+		{
+			familiarTab->setSlotCost(fileSlotCost); // restore the escalated price before refreshing the button label below
+			familiarTab->refreshSlotButtons(); // slot state just changed outside FamiliarTab's own click handlers - make sure its displayed list catches up
+		}
 
 		// Statistics: increase counters to saved values where possible
 		{
@@ -1307,12 +1629,29 @@ void Game::loadFromFile(const std::string& path)
 			shopTab->setGoldMultiplierCost(BigNumber(shopGoldMultiplierCost));
 			shopTab->setCritChanceCost(BigNumber(shopCritChanceCost));
 			shopTab->setCritDamageCost(BigNumber(shopCritDamageCost));
-			shopTab->setFamiliarPhysicalAttackCost(BigNumber(shopFamiliarPhysicalAttackCost));
-			shopTab->setFamiliarElementalAttackCost(BigNumber(shopFamiliarElementalAttackCost));
-			shopTab->setFamiliarCooldownReductionCost(BigNumber(shopFamiliarCooldownCost));
 			shopTab->setGoldMultiplierIncreaseAmount(shopGoldMultiplierIncreaseAmount);
 			shopTab->setGoldMultiplierUpgradesPurchased(shopGoldMultiplierUpgradesPurchased);
 			shopTab->refreshLabels();
+		}
+		// Every lineage's three upgrade costs, moved to FamiliarTab (see Step 3). Labels/
+		// visibility are already refreshed by the familiar-restore block above, so no need to
+		// repeat that here - just write the costs themselves.
+		if (familiarTab)
+		{
+			familiarTab->setFirePhysicalUpgradeCost(BigNumber(shopFamiliarPhysicalAttackCost));
+			familiarTab->setFireElementalUpgradeCost(BigNumber(shopFamiliarElementalAttackCost));
+			familiarTab->setFireCooldownUpgradeCost(BigNumber(shopFamiliarCooldownCost));
+
+			familiarTab->setWaterPhysicalUpgradeCost(BigNumber(shopFamiliarWaterPhysicalCost));
+			familiarTab->setWaterElementalUpgradeCost(BigNumber(shopFamiliarWaterElementalCost));
+			familiarTab->setWaterCooldownUpgradeCost(BigNumber(shopFamiliarWaterCooldownCost));
+
+			familiarTab->setWindPhysicalUpgradeCost(BigNumber(shopFamiliarWindPhysicalCost));
+			familiarTab->setWindElementalUpgradeCost(BigNumber(shopFamiliarWindElementalCost));
+			familiarTab->setWindCooldownUpgradeCost(BigNumber(shopFamiliarWindCooldownCost));
+
+			familiarTab->refreshUpgradeButtonLabels(); // the buttons were showing their starting costs - make them show the just-restored ones
+			familiarTab->refreshButtonVisibility();    // repacks the layout in case a restored cooldown cost means a button should now be hidden (cooldown already at its floor)
 		}
 
 		// Refresh layout / UI after load

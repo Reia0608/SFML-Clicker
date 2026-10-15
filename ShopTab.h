@@ -21,10 +21,7 @@ private:
 	UIButton* buyGoldMultiplierButton;
 	UIButton* buyCritChanceButton;
 	UIButton* buyCritDamageButton;
-	UIButton* buyFamiliarButton;
-	UIButton* buyFamiliarUpgradePhysicalAttackButton;
-	UIButton* buyFamiliarUpgradeElementalAttackButton;
-	UIButton* buyFamiliarCooldownReductionButton;
+	UIButton* buyFamiliarButton; // the one familiar-related button staying here - see its class comment in FamiliarTab.h for why
 
 	struct ShopButtonEntry // pairs each button with the rule that decides whether it currently takes up UI space
 	{
@@ -47,12 +44,6 @@ private:
 	double critChanceIncreaseAmount = 0.0025;
 
 	BigNumber familiarCost = BigNumber(5000); // one-time unlock cost, no scaling
-	BigNumber familiarPhysicalAttackUpgradeCost = BigNumber(6500);
-	BigNumber familiarPhysicalAttackUpgradeAmount = BigNumber(3);
-	BigNumber familiarElementalAttackUpgradeCost = BigNumber(8000);
-	BigNumber familiarElementalAttackUpgradeAmount = BigNumber(2);
-	BigNumber familiarCooldownReductionCost = BigNumber(10000);
-	float familiarCooldownReductionAmount = 0.5f;
 
 	BigNumber critDamageCost = BigNumber(150);
 	double critDamageIncreaseAmount = 0.10;
@@ -65,17 +56,9 @@ private:
 	void updateGoldMultiplierButtonLabel();
 	void onBuyGoldMultiplierClicked();
 
-	// Familiar-related methods
+	// Familiar-related methods - just the unlock button now, see its member comment above
 	void updateFamiliarButtonLabel();
 	void onBuyFamiliarClicked();
-	void updateFamiliarPhysicalAttackButtonLabel();
-	void onBuyFamiliarPhysicalAttackUpgradeClicked();
-	void updateFamiliarElementalAttackButtonLabel();
-	void onBuyFamiliarElementalAttackUpgradeClicked();
-	void updateFamiliarCooldownButtonLabel();
-	void onBuyFamiliarCooldownReductionClicked();
-
-	std::string formatCooldownAmount(double amount);
 
 public:
 	ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockManager* unlockManager);
@@ -101,9 +84,6 @@ public:
 	BigNumber getGoldMultiplierCost() const;
 	BigNumber getCritChanceCost() const;
 	BigNumber getCritDamageCost() const;
-	BigNumber getFamiliarPhysicalAttackCost() const;
-	BigNumber getFamiliarElementalAttackCost() const;
-	BigNumber getFamiliarCooldownReductionCost() const;
 
 	// persistence for the gold-multiplier upgrade's scaling state (affected by the Hoarder achievement)
 	double getGoldMultiplierIncreaseAmount() const;
@@ -113,9 +93,6 @@ public:
 	void setGoldMultiplierCost(BigNumber cost);
 	void setCritChanceCost(BigNumber cost);
 	void setCritDamageCost(BigNumber cost);
-	void setFamiliarPhysicalAttackCost(BigNumber cost);
-	void setFamiliarElementalAttackCost(BigNumber cost);
-	void setFamiliarCooldownReductionCost(BigNumber cost);
 
 	void setGoldMultiplierIncreaseAmount(double value); // restores saved per-purchase gain (e.g. after Hoarder doubled it)
 	void setGoldMultiplierUpgradesPurchased(int count);  // restores saved purchase count, used only for future rebalancing math

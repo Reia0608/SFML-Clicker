@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "Familiar.h"
 #include "PublicVariables.h"
-#include "LayoutManager.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -16,25 +15,8 @@ void Familiar::initSprites(std::string idleAnimationAddress, float idleFrameTime
 	{
 		sprites->addAnimation(attack.animationKey, attack.animationAddress, spriteSize, attack.animationFrameTimerMax);
 	}
-	sprites->setPosition({ 60.0f, windowSize.y / 2.0f }); // left side of the game area, facing the enemy. y position depends on unlocked amount of familiars, but for now we only have one familiar, so it's centered vertically
+	applyStackedPosition(); // left side of the game area, facing the enemy - defaults to centered (alone in a stack of 1) until Game calls setSlotPosition() once this familiar is actually assigned to a slot
 	sprites->playAnimation("idle");
-}
-
-void Familiar::initFamiliarDPSText()
-{
-	familiarDPSText = new Text("click damage: " + getFamiliarDPS().toString(), "Fonts/arial.ttf");
-	// Pale silver-blue - source-identity color for "damage dealt by the active familiar's
-	// auto-attack/abilities", nudged further toward blue than a neutral gray so it stays
-	// distinguishable against grayer future biomes (rocky mountain, castle interior). Deliberately
-	// desaturated, same reasoning as Hero::dpsText's pale gold and Game::passiveFamiliarDPSText's
-	// pale lavender - this trio identifies WHO dealt the damage, leaving vivid/saturated hues free
-	// for whatever ELEMENT is involved later (e.g. a burn-over-time tick shown in vivid red).
-	// Defined as `dpsColor` in Familiar.h so this text and this familiar's floating damage
-	// numbers (see Game.cpp) can never drift apart into two different shades of "familiar blue".
-	familiarDPSText->setFillColor(dpsColor);
-	familiarDPSText->setOutlineColor(sf::Color::Black);
-	familiarDPSText->setOutlineThickness(2.0f);
-	updateFamiliarDPSText();
 }
 
 void Familiar::setupAttacks(std::vector<FamiliarAttack> attackList)
@@ -51,6 +33,13 @@ void Familiar::setupAttacks(std::vector<FamiliarAttack> attackList)
 			attack.projectileTexture->setFrameTimerMax(attack.projectileFrameTimerMax);
 			attack.projectileTexture->setFrameTimer(attack.projectileFrameTimerMax);
 			attack.projectileTexture->setSmooth(false);
+		}
+		if (attack.spawnsEnemyEffect)
+		{
+			attack.enemyEffectTexture = new Textures(attack.enemyEffectAnimationAddress, attack.enemyEffectSpriteSize, attack.enemyEffectFrameCount);
+			attack.enemyEffectTexture->setFrameTimerMax(attack.enemyEffectFrameTimerMax);
+			attack.enemyEffectTexture->setFrameTimer(attack.enemyEffectFrameTimerMax);
+			attack.enemyEffectTexture->setSmooth(false);
 		}
 	}
 	attacks = std::move(attackList);
@@ -92,7 +81,7 @@ void Familiar::initCooldownIndicator()
 	cooldownText->setOutlineColor(sf::Color::Black);
 	cooldownText->setOutlineThickness(1.0f);
 
-	sf::Vector2f center = sprites->getPosition() + sf::Vector2f(0.0f, cooldownRingOffsetY);
+	sf::Vector2f center = restPosition + sf::Vector2f(0.0f, cooldownRingOffsetY);
 	buildRingArc(cooldownRingTrack, center, cooldownRingInnerRadius, cooldownRingOuterRadius, -90.0f, 360.0f, cooldownRingSegments, sf::Color(50, 50, 50, 200));
 }
 
@@ -107,7 +96,10 @@ void Familiar::updateCooldownIndicator()
 	auto it = std::find_if(attacks.begin(), attacks.end(), [](const FamiliarAttack& a) { return a.isAutoAttack; });
 	if (it == attacks.end()) return; // this familiar has no auto-attack to show - ring stays at its static "track" appearance
 
-	sf::Vector2f center = sprites->getPosition() + sf::Vector2f(0.0f, cooldownRingOffsetY);
+	// Anchored to restPosition rather than sprites->getPosition() - the cooldown indicator
+	// shouldn't follow the familiar's sprite when self-movement (e.g. Bubble Stream's leap)
+	// lifts it off the ground; it stays put at the familiar's normal spot.
+	sf::Vector2f center = restPosition + sf::Vector2f(0.0f, cooldownRingOffsetY);
 
 	float fullCooldown = getEffectiveCooldown(*it);
 	float progress = fullCooldown > 0.0f ? 1.0f - (it->cooldownRemaining / fullCooldown) : 1.0f; // 0 = just attacked, 1 = ready
@@ -133,6 +125,7 @@ void Familiar::syncDPSTrackerWindow()
 Familiar::Familiar(FamiliarType familiarType)
 {
 	name = familiarType.name;
+	currentAge = familiarType.age;
 	label = familiarType.label;
 	type = familiarType.type;
 
@@ -141,31 +134,81 @@ Familiar::Familiar(FamiliarType familiarType)
 	syncDPSTrackerWindow();
 
 	initCooldownIndicator();
-	initFamiliarDPSText();
 }
 
 Familiar::~Familiar()
 {
 	delete sprites;
 	delete cooldownText;
-	delete familiarDPSText;
-	for (auto& attack : attacks) delete attack.projectileTexture;
+	for (auto& attack : attacks) { delete attack.projectileTexture; delete attack.enemyEffectTexture; }
+}
+
+void Familiar::applyStackedPosition()
+{
+	// Splits the window height into currentTotalSlots equal bands and centers this familiar
+	// within its own band - with 1 slot that's exactly the old hardcoded "centered vertically"
+	// position; with more, each familiar gets an even share of the left side instead of
+	// overlapping. std::max guards against a div-by-zero if this is ever somehow called with 0.
+	float bandHeight = windowSize.y / static_cast<float>(std::max(1, currentTotalSlots));
+	float y = bandHeight * (static_cast<float>(currentSlotIndex) + 0.5f);
+	restPosition = { 60.0f, y };
+	sprites->setPosition(restPosition);
+}
+
+void Familiar::setSlotPosition(int slotIndex, int totalActiveSlots)
+{
+	currentSlotIndex = slotIndex;
+	currentTotalSlots = totalActiveSlots;
+	applyStackedPosition();
+
+	// The cooldown ring is drawn relative to restPosition (see cooldownRingOffsetY), so
+	// it needs rebuilding at its new center too - same as onResize() already does below.
+	sf::Vector2f center = restPosition + sf::Vector2f(0.0f, cooldownRingOffsetY);
+	buildRingArc(cooldownRingTrack, center, cooldownRingInnerRadius, cooldownRingOuterRadius, -90.0f, 360.0f, cooldownRingSegments, sf::Color(50, 50, 50, 200));
 }
 
 void Familiar::onResize()
 {
-	sprites->setPosition({ 60.0f, windowSize.y / 2.0f });
+	applyStackedPosition(); // re-applies the SAME row/stack-size Game last told us via setSlotPosition() - the window changing size doesn't change where in the stack this familiar belongs
 
-	sf::Vector2f center = sprites->getPosition() + sf::Vector2f(0.0f, cooldownRingOffsetY);
+	sf::Vector2f center = restPosition + sf::Vector2f(0.0f, cooldownRingOffsetY);
 	buildRingArc(cooldownRingTrack, center, cooldownRingInnerRadius, cooldownRingOuterRadius, -90.0f, 360.0f, cooldownRingSegments, sf::Color(50, 50, 50, 200));
-
-	updateFamiliarDPSText();
 }
 
-void Familiar::executeAttack(FamiliarAttack& attack, sf::Vector2f targetPosition)
+void Familiar::startAttack(FamiliarAttack& attack, sf::Vector2f targetPosition)
 {
-	attack.resetCooldown(getEffectiveCooldown(attack));
-	sprites->playAnimation(attack.animationKey, true, "idle");
+	if (!attack.isAutoAttack)
+	{
+		attack.resetCooldown(getEffectiveCooldown(attack)); // manual attacks go on cooldown the instant they're activated
+	}
+	attack.beginActivation();
+
+	// See the comment on this method in Familiar.h for the full priority rule: a manual attack
+	// may preempt a currently-playing AUTO-attack's animation, but nothing may ever preempt a
+	// currently-playing MANUAL attack's animation, and an auto-attack never preempts anything.
+	bool spriteIsFree = !sprites->isOneShotPlaying();
+	bool manualPreemptsAuto = !attack.isAutoAttack && !currentOneShotIsManual;
+
+	if (spriteIsFree || manualPreemptsAuto)
+	{
+		sprites->playAnimation(attack.animationKey, true, "idle");
+		currentOneShotIsManual = !attack.isAutoAttack;
+
+		if (attack.hasLoop())
+		{
+			// Armed from the very start of playback - the loop only actually takes effect once
+			// the animation naturally advances past loopEndFrame for the first time (see
+			// Textures::frameRight()), so configuring it now is safe even though frame 1 is
+			// nowhere near the loop range yet.
+			sprites->setAnimationLoopRange(attack.animationKey, attack.loopStartFrame, attack.loopEndFrame);
+			sprites->setAnimationLooping(attack.animationKey, true);
+		}
+	}
+}
+
+void Familiar::resolveAttack(FamiliarAttack& attack, sf::Vector2f targetPosition)
+{
+	bool isFirstShot = (attack.shotsFiredThisActivation == 0);
 
 	// Bonus stats (purchased via ShopTab) only ever apply to auto-attacks - a manually
 	// activated ability runs on its own base stats alone.
@@ -182,18 +225,47 @@ void Familiar::executeAttack(FamiliarAttack& attack, sf::Vector2f targetPosition
 
 	if (attack.isRanged)
 	{
-		activeProjectiles.emplace_back(sprites->getPosition(), targetPosition, attack.projectileTravelDuration,
-			physical, elemental, *attack.projectileTexture, attack.projectileScale);
-		return;
+		sf::Vector2f spawnPosition = sprites->getPosition() + attack.projectileSpawnOffset;
+		activeProjectiles.emplace_back(spawnPosition, targetPosition, attack.projectileTravelDuration,
+			physical, elemental, *attack.projectileTexture, attack.projectileScale,
+			attack.projectileMotion, attack.projectileMotionAmplitude, attack.projectileMotionCycles);
+	}
+	else
+	{
+		// melee - resolved against whatever's on the field right now, same as the hero's own
+		// click damage. computeDamage() resolves each active element's own multiplier
+		// independently (no averaging across elements) - see ElementalPower::computeDamage.
+		BigNumber elementalDamage = elemental.computeDamage(elementalMultiplierResolver);
+		BigNumber finalDamage = physical + elementalDamage;
+		familiarDPSTracker.recordDamage(finalDamage);
+		if (onDamageDealt) onDamageDealt(finalDamage, elemental.getMask());
 	}
 
-	// melee - resolved instantly against whatever's on the field right now, same as the hero's
-	// own click damage. computeDamage() resolves each active element's own multiplier
-	// independently (no averaging across elements) - see ElementalPower::computeDamage.
-	BigNumber elementalDamage = elemental.computeDamage(elementalMultiplierResolver);
-	BigNumber finalDamage = physical + elementalDamage;
-	familiarDPSTracker.recordDamage(finalDamage);
-	if (onDamageDealt) onDamageDealt(finalDamage, elemental.getMask());
+	if (attack.spawnsEnemyEffect)
+	{
+		sf::Vector2f effectPosition = targetPosition + attack.enemyEffectSpawnOffset;
+		activeEffects.emplace_back(effectPosition, effectPosition, attack.enemyEffectDuration,
+			BigNumber(0), ElementalPower(), *attack.enemyEffectTexture, attack.enemyEffectScale);
+	}
+
+	if (attack.customEffect) attack.customEffect(*this, attack, targetPosition);
+
+	if (isFirstShot && attack.isAutoAttack)
+	{
+		// The cooldown ring reaches 0 exactly as this shot lands - see the lead-in windup
+		// trigger in update(), which starts this attack's animation early enough that its
+		// active frame arrives right when the cooldown would otherwise hit 0.
+		attack.resetCooldown(getEffectiveCooldown(attack));
+		attack.windupStarted = false; // allow the next cycle's windup to begin
+	}
+
+	// registerShotFired() decides whether this activation still owes more shots (and arms the
+	// timing for the next one) - once it says no, let this attack's loop (if it has one) finish
+	// its current pass and continue on rather than wrap around again.
+	if (!attack.registerShotFired() && attack.hasLoop())
+	{
+		sprites->setAnimationLooping(attack.animationKey, false);
+	}
 }
 
 void Familiar::update(float dt, sf::Vector2f targetPosition)
@@ -202,14 +274,26 @@ void Familiar::update(float dt, sf::Vector2f targetPosition)
 
 	sprites->animate(dt);
 	familiarDPSTracker.update(dt);
-	updateFamiliarDPSText();
 
 	for (auto& attack : attacks)
 	{
 		attack.tick(dt);
-		if (attack.isAutoAttack && attack.isReady())
+		if (attack.isAutoAttack && !attack.windupStarted)
 		{
-			executeAttack(attack, targetPosition);
+			float leadTime = std::min(attack.getActiveFrameDelay(), getEffectiveCooldown(attack));
+			if (attack.cooldownRemaining <= leadTime)
+			{
+				attack.windupStarted = true;
+				startAttack(attack, targetPosition);
+			}
+		}
+		if (attack.tickActiveFrameCountdown(dt))
+		{
+			resolveAttack(attack, targetPosition);
+		}
+		if (attack.tickLoopFireCountdown(dt))
+		{
+			resolveAttack(attack, targetPosition);
 		}
 	}
 
@@ -233,6 +317,28 @@ void Familiar::update(float dt, sf::Vector2f targetPosition)
 			++activeProjectile;
 		}
 	}
+
+	for (auto activeEffect = activeEffects.begin(); activeEffect != activeEffects.end(); )
+	{
+		if (activeEffect->update(dt)) activeEffect = activeEffects.erase(activeEffect);
+		else ++activeEffect;
+	}
+
+	updateSelfMovement();
+}
+
+void Familiar::updateSelfMovement()
+{
+	float lift = 0.0f;
+	for (const auto& attack : attacks)
+	{
+		if (attack.hasSelfMovement() && sprites->isAnimationCurrentlyShowing(attack.animationKey))
+		{
+			lift = attack.getSelfMovementLift(sprites->getCurrentFrame(attack.animationKey));
+			break; // only one animation can be showing at a time
+		}
+	}
+	sprites->setPosition(restPosition - sf::Vector2f(0.0f, lift)); // screen Y grows downward - subtracting lift moves it up
 }
 
 void Familiar::draw(sf::RenderWindow* window)
@@ -244,6 +350,11 @@ void Familiar::draw(sf::RenderWindow* window)
 	{
 		projectile.draw(window);
 	}
+
+	for (const auto& effect : activeEffects)
+	{
+		effect.draw(window);
+	}
 }
 
 void Familiar::drawHUD(sf::RenderWindow* window)
@@ -254,7 +365,6 @@ void Familiar::drawHUD(sf::RenderWindow* window)
 	window->draw(cooldownRingTrack);
 	window->draw(cooldownRingProgress);
 	window->draw(*cooldownText);
-	window->draw(*familiarDPSText);
 }
 
 bool Familiar::isUnlocked() const
@@ -287,7 +397,7 @@ bool Familiar::isManualAttackReady(size_t attackIndex) const
 bool Familiar::activateManualAttack(size_t attackIndex, sf::Vector2f targetPosition)
 {
 	if (!isManualAttackReady(attackIndex)) return false;
-	executeAttack(attacks[attackIndex], targetPosition);
+	startAttack(attacks[attackIndex], targetPosition);
 	return true;
 }
 
@@ -370,6 +480,16 @@ FamiliarName Familiar::getName() const
 	return name;
 }
 
+void Familiar::setAge(Age age)
+{
+	currentAge = age;
+}
+
+Age Familiar::getAge() const
+{
+	return currentAge;
+}
+
 void Familiar::setBonusPhysicalPower(BigNumber value)
 {
 	bonusPhysicalPower = value;
@@ -398,14 +518,15 @@ float Familiar::getAttackCooldown(size_t attackIndex) const
 
 void Familiar::evolveTo(FamiliarType newType)
 {
-	name = newType.name;
+	name = newType.name; // should already equal the current species - evolving never changes WHICH species this is, only its stage
+	currentAge = newType.age;
 	label = newType.label;
 	type = newType.type;
 
 	delete sprites;
 	initSprites(newType.idleAnimationAddress, newType.idleFrameTimerMax, newType.spriteSize, newType.attacks);
 
-	for (auto& attack : attacks) delete attack.projectileTexture; // free the outgoing stage's projectile textures
+	for (auto& attack : attacks) { delete attack.projectileTexture; delete attack.enemyEffectTexture; } // free the outgoing stage's projectile/effect textures
 	attacks.clear();
 	setupAttacks(newType.attacks);
 	syncDPSTrackerWindow();
@@ -418,29 +539,13 @@ void Familiar::evolveTo(FamiliarType newType)
 	// deliberately left untouched here - evolving keeps purchased upgrade progress, it doesn't
 	// reset it. `attacks` above was just rebuilt from newType's BASE stats only, so the new
 	// stage's effective stats/cooldown are naturally base(new stage) combined with these
-	// unchanged bonuses the next time they're read (see getEffectiveCooldown/executeAttack) -
+	// unchanged bonuses the next time they're read (see getEffectiveCooldown/resolveAttack) -
 	// no separate "carry the old cooldown reduction over" step is needed.
-
-	updateFamiliarDPSText();
-}
-
-void Familiar::updateFamiliarDPSText()
-{
-	familiarDPSText->setString("Familiar DPS: " + getFamiliarDPS().toString());
-	// -160: top of the BottomRight stat stack - this requires a familiar to be actively slotted
-	// (not just unlocked), which happens later than everything below it, including Game::dpsText's
-	// passive DPS line at -120 (unlocks as soon as any familiar is unlocked, no slotting needed).
-	LayoutManager::applyAnchor(*familiarDPSText, Anchor::BottomRight, { -10.0f, -160.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
 }
 
 BigNumber Familiar::getFamiliarDPS() const
 {
 	return familiarDPSTracker.getDPS();
-}
-
-sf::FloatRect Familiar::getDPSTextBounds() const
-{
-	return familiarDPSText->getGlobalBounds();
 }
 
 float Familiar::getAttackCooldownRemaining(size_t attackIndex) const

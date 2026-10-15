@@ -5,6 +5,8 @@ void AchievementManager::initAchievements()
 {
 	Statistics* stats = statistics;   // copy of the pointer to use in lambdas for clarity
 	Familiar* fam = familiar;         // same pattern, for clarity in the lambda below
+	Familiar* waterFam = waterFamiliar;
+	Familiar* windFam = windFamiliar;
 	ItemManager* items = itemManager;
 
 	// --- existing achievements stay exactly as they are ---
@@ -46,6 +48,28 @@ void AchievementManager::initAchievements()
 
 	achievements.push_back(Achievement("Familiar Bond", "Summon your first familiar",
 		[fam]() { return fam->isUnlocked(); }, BigNumber(2000)));
+
+	// Hidden (requiredFeature) until the player actually has an active Baby Fire Dragon - see
+	// Game::updateFamiliarFeatureGates(), the only place that sets "BabyFireDragonActive".
+	// Claiming this doesn't grant the Fireball attack itself - it only unlocks FamiliarTab's
+	// purchase button for it (see Game.cpp's onAchievementClaimed and FamiliarTab.cpp's
+	// addAttackUnlockButton() call). That two-step pattern - achievement claim reveals a shop
+	// button, shop purchase grants the actual thing - is meant to repeat for future familiars'
+	// gated attacks too.
+	achievements.push_back(Achievement("Juvenile Flame", "Evolve your Fire Dragon into its Juvenile stage",
+		[fam]() { return fam->getAge() == Age::Juvenile; }, BigNumber(0),
+		"Unlocks: Fireball purchase in the Familiar shop", "BabyFireDragonActive"));
+
+	// Same two-step pattern as "Juvenile Flame" above, one per other lineage - see
+	// Game::updateFamiliarFeatureGates() for "BabyWaterDragonActive"/"BabyWindDragonActive", and
+	// Game.cpp's onAchievementClaimed for what claiming these actually unlocks.
+	achievements.push_back(Achievement("Juvenile Tide", "Evolve your Water Dragon into its Juvenile stage",
+		[waterFam]() { return waterFam->getAge() == Age::Juvenile; }, BigNumber(0),
+		"Unlocks: Bubble Stream purchase in the Familiar shop", "BabyWaterDragonActive"));
+
+	achievements.push_back(Achievement("Juvenile Gale", "Evolve your Wind Dragon into its Juvenile stage",
+		[windFam]() { return windFam->getAge() == Age::Juvenile; }, BigNumber(0),
+		"Unlocks: Wind Swipes purchase in the Familiar shop", "BabyWindDragonActive"));
 
 	achievements.push_back(Achievement("Speedrunner", "Defeat a boss in under 5 seconds",
 		[stats]() {
@@ -103,8 +127,10 @@ void AchievementManager::addItemRewardAchievement(const std::string& name, const
 	achievements.push_back(Achievement(name, description, condition, goldReward, rewardLabel, requiredFeature, itemIndex, itemCount));
 }
 
-AchievementManager::AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager, UnlockManager* unlockManager)
-	: hero(hero), statistics(statistics), familiar(familiar), itemManager(itemManager), unlockManager(unlockManager)
+AchievementManager::AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager, UnlockManager* unlockManager,
+	Familiar* waterFamiliar, Familiar* windFamiliar)
+	: hero(hero), statistics(statistics), familiar(familiar), waterFamiliar(waterFamiliar), windFamiliar(windFamiliar),
+	itemManager(itemManager), unlockManager(unlockManager)
 {
 	initAchievements();
 }

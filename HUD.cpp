@@ -4,9 +4,14 @@
 #include <sstream>
 #include <iomanip>
 
-HUD::HUD(std::function<sf::Vector2f()> getTargetPosition)
-	: getTargetPosition(std::move(getTargetPosition))
+HUD::HUD(std::function<sf::Vector2f()> getTargetPosition, UnlockManager* unlockManager)
+	: getTargetPosition(std::move(getTargetPosition)), unlockManager(unlockManager)
 {
+}
+
+bool HUD::isAttackAvailable(const FamiliarAttack& attack) const
+{
+	return attack.unlockFeatureKey.empty() || unlockManager->isUnlocked(attack.unlockFeatureKey);
 }
 
 bool HUD::matchesCurrentSlots(const std::vector<Familiar*>& familiarSlots) const
@@ -17,7 +22,9 @@ bool HUD::matchesCurrentSlots(const std::vector<Familiar*>& familiarSlots) const
 		if (!f) continue;
 		for (size_t i = 0; i < f->getAttackCount(); i++)
 		{
-			if (f->getAttack(i).isAutoAttack) continue;
+			const FamiliarAttack& attack = f->getAttack(i);
+			if (attack.isAutoAttack) continue;
+			if (!isAttackAvailable(attack)) continue; // gated and not purchased yet - treated as not existing, same as an auto-attack. Once purchased this flips, so the next sync() call naturally detects the mismatch below and triggers a rebuild - no extra signal needed from FamiliarTab.
 			if (entryIndex >= manualAttackEntries.size()) return false;
 			if (manualAttackEntries[entryIndex].familiar != f || manualAttackEntries[entryIndex].attackIndex != i) return false;
 			entryIndex++;
@@ -36,6 +43,7 @@ void HUD::rebuildManualAttackEntries(const std::vector<Familiar*>& familiarSlots
 		for (size_t i = 0; i < f->getAttackCount(); i++)
 		{
 			if (f->getAttack(i).isAutoAttack) continue;
+			if (!isAttackAvailable(f->getAttack(i))) continue; // gated and not purchased yet - see matchesCurrentSlots()
 
 			ManualAttackEntry entry;
 			entry.familiar = f;

@@ -48,6 +48,21 @@ void Textures::frameLeft()
 void Textures::frameRight()
 {
 	this->textureCoord.x += this->getFrameSize().x;
+
+	// While a loop is active, advancing past the configured range's last frame wraps back to
+	// its first frame instead of continuing toward the end of the sheet - lets an attack repeat
+	// a few frames (e.g. firing one shot per pass) as many times as it needs to, rather than
+	// always playing through the whole strip exactly once. Once enough shots have fired,
+	// setLoopActive(false) simply turns this check off, and playback continues on normally
+	// from wherever it currently sits - no need to know the current frame to do that.
+	if (loopActive && loopEndFrameIndex >= 0 &&
+		this->textureCoord.x > loopEndFrameIndex * static_cast<int>(this->getFrameSize().x))
+	{
+		int startIndex = loopStartFrameIndex < 0 ? 0 : loopStartFrameIndex;
+		this->textureCoord.x = startIndex * static_cast<int>(this->getFrameSize().x);
+		return; // wrapped within the loop range - not a full-sheet cycle completion
+	}
+
 	if (this->textureCoord.x >= this->frameCount * static_cast<int>(this->getFrameSize().x))
 	{
 		this->textureCoord.x = 0;
@@ -119,4 +134,15 @@ sf::Vector2u Textures::getFrameSize() const
 bool Textures::hasCompletedCycle() const
 {
 	return completedCycle;
+}
+
+void Textures::setLoopRange(int startFrameIndex, int endFrameIndex)
+{
+	loopStartFrameIndex = startFrameIndex;
+	loopEndFrameIndex = endFrameIndex;
+}
+
+void Textures::setLoopActive(bool active)
+{
+	loopActive = active;
 }

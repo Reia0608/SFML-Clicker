@@ -6,8 +6,20 @@
 #include "Textures.h"
 #include <memory>
 
-// A simple traveling attack effect (fireball, arrow, etc.) that moves in a straight
-// line from its start position to a target position and delivers its damage on arrival.
+// How a ranged attack's projectile travels from its spawn point to the target - see
+// Projectile::update() for exactly how each one is computed.
+enum class ProjectileMotion
+{
+	Linear,    // straight line, constant speed - every attack's behavior before this existed
+	Bobbing,   // travels toward the target in a straight line overall, but oscillates side to
+	           // side across its own path as it goes, like Water Bubbles' projectiles
+	GroundArc  // travels toward the target along one smooth curve off the straight line,
+	           // rather than flying straight at it - e.g. a tornado skittering sideways
+};
+
+// A simple traveling attack effect (fireball, arrow, etc.) that moves from its start position
+// to a target position and delivers its damage on arrival. See ProjectileMotion above for the
+// shape of that movement - every motion still takes exactly travelDuration seconds end to end.
 //
 // IMPORTANT: Textures::frameRight()/getTextureCoord() store the current frame as
 // mutable state ON THE TEXTURES OBJECT ITSELF (see Textures.h). That's fine for a
@@ -32,6 +44,10 @@ private:
 	BigNumber physicalDamage;
 	ElementalPower elementalPower; // this projectile's elemental power, broken down per element - 0 active elements = physical only
 
+	ProjectileMotion motion = ProjectileMotion::Linear;
+	float motionAmplitude = 0.0f; // Bobbing: how far side-to-side it oscillates, in pixels. GroundArc: how far the curve bulges off the straight line, in pixels. Unused for Linear.
+	float motionCycles = 0.0f;    // Bobbing only: how many full back-and-forth oscillations over the whole flight. Unused for Linear/GroundArc - GroundArc is always a single smooth bulge, not a repeating wave.
+
 public:
 	// textureTemplate: the Familiar's shared, already-loaded projectile animation asset.
 	// Copied (not referenced) so this projectile can animate independently of its siblings.
@@ -42,7 +58,7 @@ public:
 	// Familiar::update(). Keeping the full per-element breakdown (rather than a single pre-summed
 	// elemental total) means a projectile carrying several elements at once still gets each one
 	// scaled by its own multiplier on arrival, with no averaging.
-	Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, float travelDuration, BigNumber physicalDamage, ElementalPower elementalPower, const Textures& textureTemplate, float scale = 1.0f);
+	Projectile(sf::Vector2f startPosition, sf::Vector2f targetPosition, float travelDuration, BigNumber physicalDamage, ElementalPower elementalPower, const Textures& textureTemplate, float scale = 1.0f, ProjectileMotion motion = ProjectileMotion::Linear, float motionAmplitude = 0.0f, float motionCycles = 0.0f);
 	Projectile(const Projectile& other);
 	Projectile& operator=(const Projectile& other);
 	Projectile(Projectile&&) noexcept = default;

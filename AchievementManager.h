@@ -12,7 +12,9 @@ class AchievementManager
 private:
 	Hero* hero;						// non-owning
 	Statistics* statistics;			// non-owning
-	Familiar* familiar;				// non-owning
+	Familiar* familiar;				// non-owning - Fire, kept under its original name since every existing achievement already refers to it this way
+	Familiar* waterFamiliar;		// non-owning
+	Familiar* windFamiliar;			// non-owning
 	ItemManager* itemManager;		// non-owning
 	UnlockManager* unlockManager;	// non-owning
 	std::vector<Achievement> achievements;
@@ -24,7 +26,8 @@ private:
 		int itemIndex, int itemCount, BigNumber goldReward = BigNumber(0), std::string requiredFeature = ""); // helper for achievements that grant an item (optionally plus gold) - builds a readable rewardLabel from ItemManager's item name, e.g. "2x Ruby Emblem" or "500 Gold + 2x Ruby Emblem"
 
 public:
-	AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager, UnlockManager* unlockManager);
+	AchievementManager(Hero* hero, Statistics* statistics, Familiar* familiar, ItemManager* itemManager, UnlockManager* unlockManager,
+		Familiar* waterFamiliar, Familiar* windFamiliar);
 
 	void update();
 	const std::vector<Achievement>& getAchievements() const;		// full list incl. locked ones � save/load still needs to restore their unlocked/claimed state even while hidden

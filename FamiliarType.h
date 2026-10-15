@@ -7,7 +7,7 @@
 
 struct FamiliarType
 {
-	FamiliarName name = BabyFireDragon;
+	FamiliarName name = FireDragon;
 	std::string label;
 	std::string type;
 	Age age = Baby;

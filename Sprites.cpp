@@ -4,7 +4,7 @@
 
 Sprites::Sprites() : sf::Sprite(tempTexture)
 {
-	
+
 }
 
 Sprites::~Sprites()
@@ -52,7 +52,7 @@ void Sprites::playAnimation(std::string stateName, bool oneShot, std::string ret
 	currentState = stateName;
 	isOneShot = oneShot;
 	returnToState = returnTo;
-	
+
 	Textures* newAnimation = animations[stateName];
 	newAnimation->resetAnimation();
 
@@ -100,4 +100,33 @@ void Sprites::setSmooth(bool smooth)
 	{
 		it->second->setSmooth(smooth);
 	}
+}
+
+void Sprites::setAnimationLoopRange(std::string stateName, unsigned int loopStartFrame, unsigned int loopEndFrame)
+{
+	auto it = animations.find(stateName);
+	if (it == animations.end()) return;
+	// FamiliarAttack/Sprites count frames from 1 (matching how you'd describe a spritesheet out
+	// loud); Textures counts from 0 internally - convert at this boundary.
+	it->second->setLoopRange(static_cast<int>(loopStartFrame) - 1, static_cast<int>(loopEndFrame) - 1);
+}
+
+void Sprites::setAnimationLooping(std::string stateName, bool looping)
+{
+	auto it = animations.find(stateName);
+	if (it == animations.end()) return;
+	it->second->setLoopActive(looping);
+}
+
+bool Sprites::isAnimationCurrentlyShowing(std::string stateName) const
+{
+	return currentState == stateName;
+}
+
+unsigned int Sprites::getCurrentFrame(std::string stateName) const
+{
+	auto it = animations.find(stateName);
+	if (it == animations.end()) return 1;
+	int frameIndex = it->second->getTextureCoord().x / static_cast<int>(it->second->getFrameSize().x);
+	return static_cast<unsigned int>(frameIndex) + 1; // Textures counts from 0 internally - convert back to 1-based
 }

@@ -15,7 +15,7 @@ void ShopTab::relayoutButtons() // the core of the locking system
 		bool visible = entry.isVisible();
 		entry.button->setEnabled(visible); // UIButton already skips render()/handleClick() while disabled
 
-		if (!visible) continue; // locked/hidden buttons reserve no space � this is the fix
+		if (!visible) continue; // locked/hidden buttons reserve no space this is the fix
 
 		entry.button->setLayout(
 			{ lastContentAreaOrigin.x + margin, y },
@@ -83,67 +83,6 @@ void ShopTab::onBuyFamiliarClicked()
 	relayoutButtons();
 }
 
-void ShopTab::updateFamiliarPhysicalAttackButtonLabel()
-{
-	buyFamiliarUpgradePhysicalAttackButton->setLabelText("Familiar Physical Attack +" + familiarPhysicalAttackUpgradeAmount.toString() + " (Cost: " + familiarPhysicalAttackUpgradeCost.toString() + ")");
-}
-
-void ShopTab::onBuyFamiliarPhysicalAttackUpgradeClicked()
-{
-	if (hero->trySpendCurrency(familiarPhysicalAttackUpgradeCost))
-	{
-		familiar->increasePhysicalAttack(familiarPhysicalAttackUpgradeAmount);
-		statistics->recordShopUpgradePurchased();
-		familiarPhysicalAttackUpgradeCost = familiarPhysicalAttackUpgradeCost * BigNumber(1.2);
-		updateFamiliarPhysicalAttackButtonLabel();
-		familiar->updateFamiliarDPSText();
-	}
-}
-
-void ShopTab::updateFamiliarElementalAttackButtonLabel()
-{
-	buyFamiliarUpgradeElementalAttackButton->setLabelText("Familiar Elemental Attack +" + familiarElementalAttackUpgradeAmount.toString() + " (Cost: " + familiarElementalAttackUpgradeCost.toString() + ")");
-}
-
-void ShopTab::onBuyFamiliarElementalAttackUpgradeClicked()
-{
-	if (hero->trySpendCurrency(familiarElementalAttackUpgradeCost))
-	{
-		familiar->increaseElementalAttack(familiarElementalAttackUpgradeAmount);
-		statistics->recordShopUpgradePurchased();
-		familiarElementalAttackUpgradeCost = familiarElementalAttackUpgradeCost * BigNumber(1.2);
-		updateFamiliarElementalAttackButtonLabel();
-		familiar->updateFamiliarDPSText();
-	}
-}
-
-void ShopTab::updateFamiliarCooldownButtonLabel()
-{
-	buyFamiliarCooldownReductionButton->setLabelText("Familiar cooldown reduction by " + formatCooldownAmount(familiarCooldownReductionAmount) + " seconds (Cost: " + familiarCooldownReductionCost.toString() + ")");
-}
-
-void ShopTab::onBuyFamiliarCooldownReductionClicked()
-{
-	if (hero->trySpendCurrency(familiarCooldownReductionCost))
-	{
-		familiar->increaseCooldownReduction(familiarCooldownReductionAmount);
-		statistics->recordShopUpgradePurchased();
-		familiarCooldownReductionCost = familiarCooldownReductionCost * BigNumber(1.5);
-		updateFamiliarCooldownButtonLabel();
-		familiar->updateFamiliarDPSText();
-
-		relayoutButtons();
-	}
-}
-
-std::string ShopTab::formatCooldownAmount(double amount)
-{
-	std::ostringstream oss;
-	oss << std::setprecision(3) << familiarCooldownReductionAmount;
-	std::string amountStr = oss.str();
-	return amountStr;
-}
-
 ShopTab::ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockManager* unlockManager)
 	: hero(hero), statistics(statistics), familiar(familiar), unlockManager(unlockManager)
 {
@@ -152,28 +91,19 @@ ShopTab::ShopTab(Hero* hero, Statistics* statistics, Familiar* familiar, UnlockM
 	buyCritChanceButton = new UIButton("", [this]() { onBuyCritChanceClicked(); });
 	buyCritDamageButton = new UIButton("", [this]() { onBuyCritDamageClicked(); });
 	buyFamiliarButton = new UIButton("", [this]() { onBuyFamiliarClicked(); });
-	buyFamiliarUpgradePhysicalAttackButton = new UIButton("", [this]() { onBuyFamiliarPhysicalAttackUpgradeClicked(); });
-	buyFamiliarUpgradeElementalAttackButton = new UIButton("", [this]() { onBuyFamiliarElementalAttackUpgradeClicked(); });
-	buyFamiliarCooldownReductionButton = new UIButton("", [this]() { onBuyFamiliarCooldownReductionClicked(); });
 
 	updateButtonLabel();
 	updateGoldMultiplierButtonLabel();
 	updateCritChanceButtonLabel();
 	updateCritDamageButtonLabel();
 	updateFamiliarButtonLabel();
-	updateFamiliarPhysicalAttackButtonLabel();
-	updateFamiliarElementalAttackButtonLabel();
-	updateFamiliarCooldownButtonLabel();
 
 	buttonEntries = {
-		{ buyAttackButton,                        [this]() { return true; } },
-		{ buyGoldMultiplierButton,                [this]() { return true; } },
-		{ buyCritChanceButton,					  [this]() { return true; } },
-		{ buyCritDamageButton,                    [this]() { return this->unlockManager->isUnlocked("CritDamageUnlocked"); } },
-		{ buyFamiliarButton,                      [this]() { return !this->familiar->isUnlocked(); } },
-		{ buyFamiliarUpgradePhysicalAttackButton, [this]() { return this->familiar->isUnlocked(); } },
-		{ buyFamiliarUpgradeElementalAttackButton,[this]() { return this->familiar->isUnlocked(); } },
-		{ buyFamiliarCooldownReductionButton,     [this]() { return this->familiar->isUnlocked() && !this->familiar->isAutoAttackCooldownAtMinimum(); } },
+		{ buyAttackButton,         [this]() { return true; } },
+		{ buyGoldMultiplierButton, [this]() { return true; } },
+		{ buyCritChanceButton,	   [this]() { return true; } },
+		{ buyCritDamageButton,     [this]() { return this->unlockManager->isUnlocked("CritDamageUnlocked"); } },
+		{ buyFamiliarButton,       [this]() { return !this->familiar->isUnlocked(); } },
 		// Example: a future feature-gated upgrade, hidden until "SomeAchievement" is claimed:
 		// { buyNewUpgradeButton, [this]() { return unlockManager->isUnlocked("SomeFeatureKey"); } },
 	};
@@ -186,9 +116,6 @@ ShopTab::~ShopTab()
 	delete buyCritChanceButton;
 	delete buyCritDamageButton;
 	delete buyFamiliarButton;
-	delete buyFamiliarUpgradePhysicalAttackButton;
-	delete buyFamiliarUpgradeElementalAttackButton;
-	delete buyFamiliarCooldownReductionButton;
 }
 
 void ShopTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize)
@@ -298,21 +225,6 @@ BigNumber ShopTab::getCritDamageCost() const
 	return critDamageCost;
 }
 
-BigNumber ShopTab::getFamiliarPhysicalAttackCost() const
-{
-	return familiarPhysicalAttackUpgradeCost;
-}
-
-BigNumber ShopTab::getFamiliarElementalAttackCost() const
-{
-	return familiarElementalAttackUpgradeCost;
-}
-
-BigNumber ShopTab::getFamiliarCooldownReductionCost() const
-{
-	return familiarCooldownReductionCost;
-}
-
 double ShopTab::getGoldMultiplierIncreaseAmount() const
 {
 	return goldMultiplierIncreaseAmount;
@@ -343,21 +255,6 @@ void ShopTab::setCritDamageCost(BigNumber cost)
 	critDamageCost = cost;
 }
 
-void ShopTab::setFamiliarPhysicalAttackCost(BigNumber cost)
-{
-	familiarPhysicalAttackUpgradeCost = cost;
-}
-
-void ShopTab::setFamiliarElementalAttackCost(BigNumber cost)
-{
-	familiarElementalAttackUpgradeCost = cost;
-}
-
-void ShopTab::setFamiliarCooldownReductionCost(BigNumber cost)
-{
-	familiarCooldownReductionCost = cost;
-}
-
 void ShopTab::setGoldMultiplierIncreaseAmount(double value)
 {
 	goldMultiplierIncreaseAmount = value;
@@ -375,9 +272,6 @@ void ShopTab::refreshLabels()
 	updateCritChanceButtonLabel();
 	updateCritDamageButtonLabel();
 	updateFamiliarButtonLabel();
-	updateFamiliarPhysicalAttackButtonLabel();
-	updateFamiliarElementalAttackButtonLabel();
-	updateFamiliarCooldownButtonLabel();
 
 	relayoutButtons();
 }
@@ -388,9 +282,6 @@ void ShopTab::resetPricesToDefault()
 	goldMultiplierCost = BigNumber(30);
 	critChanceCost = BigNumber(200);
 	critDamageCost = BigNumber(150);
-	familiarPhysicalAttackUpgradeCost = BigNumber(6500);
-	familiarElementalAttackUpgradeCost = BigNumber(8000);
-	familiarCooldownReductionCost = BigNumber(10000);
 	refreshLabels();
 }
 

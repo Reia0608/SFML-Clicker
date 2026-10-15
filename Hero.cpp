@@ -41,7 +41,7 @@ void Hero::initDPSText()
 	dpsText = new Text("DPS: 0", "Fonts/arial.ttf");
 	// Pale gold/ivory - source-identity color for "damage dealt by the Hero", deliberately
 	// desaturated so it reads as a stat readout rather than an elemental effect color (see the
-	// matching colors on Familiar::familiarDPSText and Game::dpsText - this is one of three).
+	// matching colors on Game::activeFamiliarDPSText and Game::dpsText - this is one of three).
 	// clickDamageText below stays pure Red on purpose - it's not part of this scheme, it just
 	// shows current attack power and already matches the Enemy's Red/Orange floating hit numbers.
 	dpsText->setFillColor(sf::Color(255, 235, 200));

@@ -2,6 +2,7 @@
 #include "stdafx.h"
 #include "Familiar.h"
 #include "UIButton.h"
+#include "UnlockManager.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -21,13 +22,15 @@ private:
 	};
 	std::vector<ManualAttackEntry> manualAttackEntries;
 	std::function<sf::Vector2f()> getTargetPosition; // supplied by Game - resolves where a manual attack should aim, e.g. enemySpawner->getEnemyPosition()
+	UnlockManager* unlockManager; // non-owning - used only to check a gated attack's FamiliarAttack::unlockFeatureKey
 
+	bool isAttackAvailable(const FamiliarAttack& attack) const; // true if this attack isn't gated at all, or its unlockFeatureKey has been purchased
 	bool matchesCurrentSlots(const std::vector<Familiar*>& familiarSlots) const;
 	void rebuildManualAttackEntries(const std::vector<Familiar*>& familiarSlots);
 	void layoutManualAttackEntries();
 
 public:
-	explicit HUD(std::function<sf::Vector2f()> getTargetPosition);
+	HUD(std::function<sf::Vector2f()> getTargetPosition, UnlockManager* unlockManager);
 
 	// Rebuilds the button set only if it no longer matches what's slotted (evolution changed
 	// the attack list, or a familiar was assigned/unassigned) - cheap to call every frame,

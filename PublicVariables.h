@@ -3,13 +3,20 @@
 #include "stdafx.h"
 #include <algorithm>
 
+// One value per SPECIES a familiar can be - stable across that familiar's own evolutions. Which
+// evolution stage a given familiar is currently at is a separate axis entirely (see the Age enum
+// below) - a Familiar object's identity is the (FamiliarName, Age) PAIR, never FamiliarName alone.
+// FamiliarNameCount is not a real species - keep it last; it only exists to size per-species
+// containers like Game::ownedFamiliars. Add a new species above it whenever one is implemented.
 enum FamiliarName
 {
 	None,
-	BabyFireDragon,
-	BabyIceDragon,
 	FireDragon,
+	WaterDragon,
+	WindDragon,
+	EarthDragon,
 	IceDragon,
+	FamiliarNameCount
 };
 
 enum Age

@@ -26,4 +26,10 @@ class Sprites : public sf::Sprite
 		void playAnimation(std::string stateName, bool oneShot, std::string returnState, unsigned int activeFrame); // Overloaded version to launch a different animation on the activeFrame of the first animation
 		void animate(float dt = 0.016667f);
 		void setSmooth(bool smooth);
+
+		void setAnimationLoopRange(std::string stateName, unsigned int loopStartFrame, unsigned int loopEndFrame); // configures that animation's repeating frame range (1-based, inclusive, same counting as FamiliarAttack::activeFrame) - see Textures::setLoopRange
+		void setAnimationLooping(std::string stateName, bool looping); // true: that animation's playback wraps within its configured loop range instead of advancing past it. false: lets the current pass finish naturally and continue on - see Textures::setLoopActive
+
+		bool isAnimationCurrentlyShowing(std::string stateName) const; // true if `stateName` is the one actually playing right now (one-shot or not)
+		unsigned int getCurrentFrame(std::string stateName) const; // 1-based frame that animation is currently sitting on (same counting as FamiliarAttack::activeFrame) - only meaningful while it IS the one playing
 };

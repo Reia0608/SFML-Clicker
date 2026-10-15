@@ -25,6 +25,16 @@ void AchievementsTab::rebuildLines()
 		line.claimButton = new UIButton("Claim " + achievement->rewardLabel, [this, name]() { achievementManager->claimReward(name); });
 		lines.push_back(line);
 	}
+
+	// Every new line above starts with no position at all - only relayoutLines() sets that. The
+	// very first call to rebuildLines() (from the constructor) runs before this tab has ever been
+	// told its content area, so this uses whatever lastContentAreaOrigin/Size defaults to - that's
+	// fine, the normal startup onResize() call that follows fixes it up, same as before this
+	// method existed. What's NOT fine without this call is a LATER rebuild - triggered from
+	// render() below, once a previously-hidden achievement becomes visible - which used to leave
+	// every line (the whole tab, not just the new entry) sitting at that same stale default
+	// position with no further onResize() ever coming to correct it.
+	relayoutLines();
 }
 
 void AchievementsTab::refreshClaimButtons()
@@ -53,6 +63,13 @@ AchievementsTab::~AchievementsTab()
 
 void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize)
 {
+	lastContentAreaOrigin = contentAreaOrigin;
+	lastContentAreaSize = contentAreaSize;
+	relayoutLines();
+}
+
+void AchievementsTab::relayoutLines()
+{
 	const float margin = 10.0f;
 	const float entryHeight = 40.0f;
 	const float buttonWidth = 160.0f; // should it not be a variable to better adapt the buttons while resizing the window?
@@ -64,12 +81,12 @@ void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f cont
 
 	for (size_t i = 0; i < lines.size() && i < achievements.size(); i++)
 	{
-		float y = contentAreaOrigin.y + margin + i * entryHeight;
-		lines[i].nameText->setPosition({ contentAreaOrigin.x + margin, y });
-		lines[i].descriptionText->setPosition({ contentAreaOrigin.x + margin, y + 20.0f });
+		float y = lastContentAreaOrigin.y + margin + i * entryHeight;
+		lines[i].nameText->setPosition({ lastContentAreaOrigin.x + margin, y });
+		lines[i].descriptionText->setPosition({ lastContentAreaOrigin.x + margin, y + 20.0f });
 
 		lines[i].claimButton->setLayout( // anchored to the right edge of the content area
-			{ contentAreaOrigin.x + contentAreaSize.x - margin - buttonWidth, y + 2.0f },
+			{ lastContentAreaOrigin.x + lastContentAreaSize.x - margin - buttonWidth, y + 2.0f },
 			{ buttonWidth, buttonHeight }
 		);
 	}
@@ -79,17 +96,17 @@ void AchievementsTab::render(sf::RenderWindow* window)
 {
 	hasUnseenUnlock = false;
 
-	auto visible = achievementManager->getVisibleAchievements(); // NEW
+	auto visible = achievementManager->getVisibleAchievements();
 	if (visible.size() != lines.size())
 	{
-		rebuildLines(); // a previously-hidden achievement just became visible � resync line count
+		rebuildLines(); // a previously-hidden achievement just became visible resync line count
 	}
 
 	refreshClaimButtons();
 
 	for (size_t i = 0; i < lines.size() && i < visible.size(); i++)
 	{
-		const Achievement& achievement = *visible[i]; // CHANGED
+		const Achievement& achievement = *visible[i];
 		sf::Color color = achievement.claimed ? sf::Color(120, 220, 120)
 			: achievement.unlocked ? sf::Color(230, 210, 120)
 			: sf::Color(150, 150, 150);
