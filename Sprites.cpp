@@ -130,3 +130,42 @@ unsigned int Sprites::getCurrentFrame(std::string stateName) const
 	int frameIndex = it->second->getTextureCoord().x / static_cast<int>(it->second->getFrameSize().x);
 	return static_cast<unsigned int>(frameIndex) + 1; // Textures counts from 0 internally - convert back to 1-based
 }
+
+bool Sprites::consumeFrameChange(std::string stateName, unsigned int& outNewFrame)
+{
+	auto it = animations.find(stateName);
+	if (it == animations.end()) return false;
+	if (!it->second->consumeFrameChanged()) return false;
+	outNewFrame = getCurrentFrame(stateName);
+	return true;
+}
+
+Sprites::State Sprites::captureState() const
+{
+	State state;
+	state.currentState = currentState;
+	state.isOneShot = isOneShot;
+	state.returnToState = returnToState;
+
+	auto it = animations.find(currentState);
+	if (it != animations.end())
+	{
+		state.currentAnimationFrame = it->second->captureState();
+	}
+	return state;
+}
+
+void Sprites::restoreState(const State& state)
+{
+	currentState = state.currentState;
+	isOneShot = state.isOneShot;
+	returnToState = state.returnToState;
+
+	auto it = animations.find(currentState);
+	if (it != animations.end())
+	{
+		it->second->restoreState(state.currentAnimationFrame);
+		this->setTexture(*it->second);
+		this->setTextureRect(sf::IntRect(it->second->getTextureCoord(), sf::Vector2i(it->second->getFrameSize())));
+	}
+}

@@ -99,6 +99,7 @@
     <ClCompile Include="FamiliarTab.cpp" />
     <ClCompile Include="FloatingDamageText.cpp" />
     <ClCompile Include="Fonts.cpp" />
+    <ClCompile Include="FrameStepHistory.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Hero.cpp" />
     <ClCompile Include="HUD.cpp" />
@@ -110,6 +111,7 @@
     <ClCompile Include="OptionsTab.cpp" />
     <ClCompile Include="Projectile.cpp" />
     <ClCompile Include="Randomize.cpp" />
+    <ClCompile Include="Ruler.cpp" />
     <ClCompile Include="SaveIndicator.cpp" />
     <ClCompile Include="ShopTab.cpp" />
     <ClCompile Include="Sprites.cpp" />
@@ -144,6 +146,7 @@
     <ClInclude Include="FamiliarType.h" />
     <ClInclude Include="FloatingDamageText.h" />
     <ClInclude Include="Fonts.h" />
+    <ClInclude Include="FrameStepHistory.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="Hero.h" />
     <ClInclude Include="HUD.h" />
@@ -160,6 +163,7 @@
     <ClInclude Include="Projectile.h" />
     <ClInclude Include="PublicVariables.h" />
     <ClInclude Include="Randomize.h" />
+    <ClInclude Include="Ruler.h" />
     <ClInclude Include="SaveIndicator.h" />
     <ClInclude Include="ShopTab.h" />
     <ClInclude Include="Sprites.h" />

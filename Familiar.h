@@ -80,9 +80,9 @@ private:
 	void updateCooldownIndicator();
 	static void buildRingArc(sf::VertexArray& target, sf::Vector2f center, float innerRadius, float outerRadius, float startAngleDeg, float sweepAngleDeg, int maxSegments, sf::Color color);
 
-	// Triggers one activation of `attack`: resets its cooldown and begins its countdown to the
-	// first shot (see FamiliarAttack::beginActivation) immediately, and - separately - decides
-	// whether `attack` gets to show its own one-shot animation right now:
+	// Triggers one activation of `attack`: resets its cooldown and arms the wait for its first
+	// shot (see FamiliarAttack::beginActivation) immediately, and - separately - decides whether
+	// `attack` gets to show its own one-shot animation right now:
 	//   - A MANUAL (active) attack's animation is never interrupted by anything, including
 	//     another manual attack - once one is playing, it always finishes.
 	//   - An AUTO-attack's animation is never interrupted by anything either, BUT it CAN be
@@ -95,15 +95,19 @@ private:
 	// reaches it - see FamiliarAttack.h's comment on loopStartFrame/loopEndFrame.
 	// Either way, `attack`'s shot timing runs exactly on schedule regardless of whether it
 	// actually gets to show its animation this time - its damage/projectile is never delayed or
-	// lost, just not visible if its animation got skipped or preempted.
+	// lost, just not visible if its animation got skipped or preempted. See update() for how:
+	// while `attack`'s animation IS the one showing, its shot fires off the sprite's real
+	// displayed frame; the moment it stops being shown, update() switches it to a plain
+	// elapsed-time fallback instead (FamiliarAttack::fallbackCountdown).
 	void startAttack(FamiliarAttack& attack, sf::Vector2f targetPosition);
 
 	// Resolves one shot of an attack's actual gameplay effect - melee damage lands, or a
 	// projectile is spawned from attack.projectileSpawnOffset - called from update() each time
-	// attack.tickActiveFrameCountdown() or attack.tickLoopFireCountdown() reports a shot is due.
-	// For a multi-shot attack (FamiliarAttack::projectileCount > 1) this fires once per shot,
-	// and turns off the attack's animation loop once attack.registerShotFired() reports none are
-	// left, so its current pass finishes naturally instead of repeating again.
+	// attack.pendingShotTargetFrame has just been reached, whether that was detected from the
+	// sprite's own real displayed frame or from the elapsed-time fallback (see update() for
+	// both paths). For a multi-shot attack (FamiliarAttack::projectileCount > 1) this fires once
+	// per shot, and turns off the attack's animation loop once attack.registerShotFired()
+	// reports none are left, so its current pass finishes naturally instead of repeating again.
 	void resolveAttack(FamiliarAttack& attack, sf::Vector2f targetPosition);
 
 	void syncDPSTrackerWindow(); // keeps familiarDPSTracker's averaging window matched to the primary auto-attack's cooldown
@@ -162,6 +166,29 @@ public:
 	BigNumber getFamiliarDPS() const; // this familiar's own rolling DPS - Game sums this across every slotted familiar into one combined HUD line (see Game::updateActiveFamiliarDPSText())
 
 	float getAttackCooldownRemaining(size_t attackIndex) const; // used in HUD
+
+	// Everything about this familiar that can change frame-to-frame - used by frame-stepping
+	// (see FrameStepHistory). attacks/activeProjectiles/activeEffects carry their own runtime
+	// timers (cooldowns, in-flight projectiles) along with them, copied wholesale; this assumes
+	// nothing evolves this familiar between capturing and restoring a step (evolveTo() rebuilds
+	// `attacks` with freshly-allocated textures, which would make a restored snapshot point at
+	// already-freed ones) - a safe assumption while you're just stepping through an attack, not
+	// also clicking an evolve button in the same breath.
+	struct State
+	{
+		BigNumber bonusPhysicalPower;
+		ElementalPower bonusElementalPower;
+		float bonusCooldownReduction = 0.0f;
+		std::vector<FamiliarAttack> attacks;
+		std::vector<Projectile> activeProjectiles;
+		std::vector<Projectile> activeEffects;
+		bool currentOneShotIsManual = false;
+		DPSTracker::State dpsTrackerState;
+		Sprites::State spritesState;
+	};
+
+	State captureState() const;
+	void restoreState(const State& state);
 
 	// Pale silver-blue - this familiar's source-identity color. Used both for Game's combined
 	// activeFamiliarDPSText (see Game::initActiveFamiliarDPSText()) and passed to

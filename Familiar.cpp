@@ -287,13 +287,46 @@ void Familiar::update(float dt, sf::Vector2f targetPosition)
 				startAttack(attack, targetPosition);
 			}
 		}
-		if (attack.tickActiveFrameCountdown(dt))
+
+		if (!attack.hasPendingShot()) continue;
+
+		if (sprites->isAnimationCurrentlyShowing(attack.animationKey))
 		{
-			resolveAttack(attack, targetPosition);
+			// This attack's own animation is the one actually playing - fire the instant its
+			// real displayed frame becomes the one we're waiting for. There's only one clock
+			// here (the sprite's own), so this can never drift from what's on screen.
+			attack.fallbackArmed = false; // clears any earlier fallback wait, in case this attack loses visibility again before its next shot
+			unsigned int newFrame;
+			if (sprites->consumeFrameChange(attack.animationKey, newFrame) &&
+				newFrame == static_cast<unsigned int>(attack.pendingShotTargetFrame))
+			{
+				resolveAttack(attack, targetPosition);
+			}
 		}
-		if (attack.tickLoopFireCountdown(dt))
+		else
 		{
-			resolveAttack(attack, targetPosition);
+			// A manual attack preempted this one's animation before it got there - it's frozen
+			// now and won't resume this activation, so fall back to a plain elapsed-time
+			// countdown instead, seeded once from wherever it got frozen, so the shot still
+			// lands exactly on schedule even though it's no longer visible (see the comment on
+			// fallbackCountdown in FamiliarAttack.h).
+			if (!attack.fallbackArmed)
+			{
+				attack.fallbackFrame = sprites->getCurrentFrame(attack.animationKey);
+				attack.fallbackCountdown = attack.framesToSeconds(attack.fallbackFrame, static_cast<unsigned int>(attack.pendingShotTargetFrame));
+				attack.fallbackArmed = true;
+			}
+
+			attack.fallbackCountdown -= dt;
+			if (attack.fallbackCountdown <= 0.0f)
+			{
+				attack.fallbackFrame = static_cast<unsigned int>(attack.pendingShotTargetFrame);
+				resolveAttack(attack, targetPosition);
+				if (attack.hasPendingShot())
+				{
+					attack.fallbackCountdown = attack.framesToSeconds(attack.fallbackFrame, static_cast<unsigned int>(attack.pendingShotTargetFrame));
+				}
+			}
 		}
 	}
 
@@ -551,4 +584,34 @@ BigNumber Familiar::getFamiliarDPS() const
 float Familiar::getAttackCooldownRemaining(size_t attackIndex) const
 {
 	return attackIndex < attacks.size() ? attacks[attackIndex].cooldownRemaining : 0.0f;
+}
+
+Familiar::State Familiar::captureState() const
+{
+	State state;
+	state.bonusPhysicalPower = bonusPhysicalPower;
+	state.bonusElementalPower = bonusElementalPower;
+	state.bonusCooldownReduction = bonusCooldownReduction;
+	state.attacks = attacks;
+	state.activeProjectiles = activeProjectiles;
+	state.activeEffects = activeEffects;
+	state.currentOneShotIsManual = currentOneShotIsManual;
+	state.dpsTrackerState = familiarDPSTracker.captureState();
+	state.spritesState = sprites->captureState();
+	return state;
+}
+
+void Familiar::restoreState(const State& state)
+{
+	bonusPhysicalPower = state.bonusPhysicalPower;
+	bonusElementalPower = state.bonusElementalPower;
+	bonusCooldownReduction = state.bonusCooldownReduction;
+	attacks = state.attacks;
+	activeProjectiles = state.activeProjectiles;
+	activeEffects = state.activeEffects;
+	currentOneShotIsManual = state.currentOneShotIsManual;
+	familiarDPSTracker.restoreState(state.dpsTrackerState);
+	sprites->restoreState(state.spritesState);
+
+	updateCooldownIndicator();
 }

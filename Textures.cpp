@@ -47,6 +47,8 @@ void Textures::frameLeft()
 
 void Textures::frameRight()
 {
+	frameChangedThisStep = true; // every call here is a genuine transition - see the flag's own comment in Textures.h
+
 	this->textureCoord.x += this->getFrameSize().x;
 
 	// While a loop is active, advancing past the configured range's last frame wraps back to
@@ -94,6 +96,7 @@ void Textures::resetAnimation()
 	textureCoord = { 0, rowIndex * static_cast<int>(frameSize.y) };
 	completedCycle = false;
 	frameTimer = frameTimerMax;
+	frameChangedThisStep = true; // starting an animation is itself a "frame 1 reached" event - see the flag's own comment in Textures.h
 }
 
 void Textures::setFrameTimer(float frameTime)
@@ -145,4 +148,26 @@ void Textures::setLoopRange(int startFrameIndex, int endFrameIndex)
 void Textures::setLoopActive(bool active)
 {
 	loopActive = active;
+}
+
+bool Textures::consumeFrameChanged()
+{
+	bool changed = frameChangedThisStep;
+	frameChangedThisStep = false;
+	return changed;
+}
+
+Textures::State Textures::captureState() const
+{
+	return { frameTimer, textureCoord, completedCycle, loopStartFrameIndex, loopEndFrameIndex, loopActive };
+}
+
+void Textures::restoreState(const State& state)
+{
+	frameTimer = state.frameTimer;
+	textureCoord = state.textureCoord;
+	completedCycle = state.completedCycle;
+	loopStartFrameIndex = state.loopStartFrameIndex;
+	loopEndFrameIndex = state.loopEndFrameIndex;
+	loopActive = state.loopActive;
 }

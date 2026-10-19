@@ -16,6 +16,7 @@ private:
 	{
 		Text* nameText;
 		Text* descriptionText;
+		std::string rawDescription; // un-wrapped text, kept so relayoutLines() can re-wrap it from scratch whenever the content area width changes
 		UIButton* claimButton; // only visible while unlocked && !claimed (see UIButton::setEnabled)
 	};
 

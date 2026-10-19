@@ -464,15 +464,20 @@ void Stage::drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& act
 		drawDecoration(decorationIndex++, window);
 	}
 
-	// Draw the stage text last so it stays readable on top of everything else.
-	// Third layer: HUD elements, drawn last so nothing from the world layers below can ever cover
-	// them. The stage number lives here too, alongside any other play-area trackers Game passes in.
-	window->draw(*stageText);
-	window->draw(*enemyInfoText);
+	// HUD layer, drawn last so nothing from the world layers above can ever cover it. The stage
+	// name/enemy label used to be drawn right here too - they now come in through hudElements
+	// (see Stage::drawHUD and Game::render), alongside the enemy health bar/boss timer/damage
+	// numbers, so a foreground decoration can never occlude any of them anymore.
 	for (const auto& hud : hudElements)
 	{
 		hud.draw();
 	}
+}
+
+void Stage::drawHUD(sf::RenderWindow* window)
+{
+	window->draw(*stageText);
+	window->draw(*enemyInfoText);
 }
 
 void Stage::updateTexts()

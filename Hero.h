@@ -96,4 +96,25 @@ public:
 	sf::Vector2f getCurrencyTextPosition() const { return currencyText->getPosition(); } // used by LootDropManager as the fly-to target for gold drops
 
 	sf::FloatRect getStatsBounds() const; // union of currencyText/dpsText/clickDamageText's current on-screen bounds - used by Game to size its HUD backing panel around whatever's actually shown, rather than a fixed size
+
+	// Everything about the Hero that can change frame-to-frame - used by frame-stepping (see
+	// FrameStepHistory) to save/restore the Hero exactly as it was before a manual step.
+	struct State
+	{
+		BigNumber attackPower;
+		BigNumber currency;
+		float currencyPulseElapsed = 0.0f;
+		bool currencyPulseActive = false;
+		double goldMultiplier = 1.0;
+		bool critUnlocked = false;
+		double critChance = 0.0;
+		double critDamageMultiplier = 1.5;
+		bool hasAttack1played = false;
+		bool hasAttack2played = false;
+		DPSTracker::State dpsTrackerState;
+		Sprites::State spritesState;
+	};
+
+	State captureState() const;
+	void restoreState(const State& state);
 };

@@ -18,13 +18,13 @@ EnemyType("Textures/PNG/Slime1/Idle/Slime1_Idle_Front_full.png", {64, 64}, BigNu
 	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)).setName("Green Slime"), //0 - green slime, weak to fire
 EnemyType("Textures/PNG/Slime2/Idle/Slime2_Idle_Front_full.png", {64, 64}, BigNumber(15), 0.12f, "Textures/PNG/Slime2/Hurt/Slime2_Hurt_full.png", {64, 64}, 0.12f,
 	"Textures/PNG/Slime2/Death/Slime2_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(6))
-	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)).setName("Undead Slime"), //1 - undead slime, weak to fire
+	.setElementalAffinity(ElementalAffinity().setWeakness(Fire).setWeakness(Water)).setName("Undead Slime"), //1 - undead slime, weak to fire
 EnemyType("Textures/PNG/Slime3/Idle/Slime3_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime3/Hurt/Slime3_Hurt_full.png", {64, 64}, 0.12f,
 	"Textures/PNG/Slime3/Death/Slime3_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(7))
-	.setElementalAffinity(ElementalAffinity().setResistance(Fire)).setName("Lava Slime"), //2 - lava slime, resistant to fire
+	.setElementalAffinity(ElementalAffinity().setWeakness(Water).setResistance(Fire)).setName("Lava Slime"), //2 - lava slime, resistant to fire
 EnemyType("Textures/PNG/Slime4/Idle/Slime4_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime4/Hurt/Slime4_Hurt_full.png", {64, 64}, 0.12f,
 "Textures/PNG/Slime4/Death/Slime4_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(8))
-	.setElementalAffinity(ElementalAffinity().setWeakness(Fire)).setName("Ice Slime"), //3 - ice slime, weak to fire
+	.setElementalAffinity(ElementalAffinity().setWeakness(Fire).setResistance(Wind).setResistance(Water)).setName("Ice Slime"), //3 - ice slime, weak to fire
 EnemyType("Textures/PNG/Slime5/Idle/Slime5_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime5/Hurt/Slime5_Hurt_full.png", {64, 64}, 0.12f,
 	"Textures/PNG/Slime5/Death/Slime5_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(9)).setName("Electric Slime"), //4 - neutral, no elemental profile set yet
 	};
@@ -32,7 +32,7 @@ EnemyType("Textures/PNG/Slime5/Idle/Slime5_Idle_Front_full.png", {64, 64}, BigNu
 		"Textures/PNG/Slime6/Idle/Slime6_Idle_Front_full.png", { 64, 64 }, BigNumber(10), 0.15f,
 		"Textures/PNG/Slime6/Hurt/Slime6_Hurt_full.png", { 64, 64 }, 0.15f,
 		"Textures/PNG/Slime6/Death/Slime6_Death_Front_full.png", { 64, 64 }, 0.15f, BigNumber(100)
-	).setElementalAffinity(ElementalAffinity().setResistance(Fire, 0.75)).setName("Slime King"); // example: bosses can have their own, differently-tuned profile
+	).setElementalAffinity(ElementalAffinity().setWeakness(Water, 1.5).setResistance(Fire, 0.75)).setName("Slime King"); // example: bosses can have their own, differently-tuned profile
 
 	Enemy* enemy;
 	Statistics* statistics; // non-owning
@@ -59,7 +59,8 @@ public:
 	virtual ~EnemySpawner();
 
 	void onResize();
-	void render(sf::RenderWindow* window);
+	void render(sf::RenderWindow* window); // world layer: just the sprite, so it still depth-sorts correctly against decorations
+	void drawHUD(sf::RenderWindow* window); // HUD layer: health bar, boss timer, floating damage numbers - always on top, never occluded by a decoration (see Enemy::drawHealthBar/drawBossTimer/drawDamageText)
 
 	bool handleClick(BigNumber damage, bool isCritical, sf::Color baseColor = sf::Color::Red, ElementMask elementMask = 0); // baseColor identifies the damage's source (Hero/familiar/passive) in its floating number; defaults to Red (Hero's own color) so the Hero's own call site didn't need to change. elementMask, when non-zero, overrides baseColor with that element's gradient (see Enemy::showDamage) - defaults to 0 so the Hero's and passive-damage's call sites don't need to change either.
 	bool getIsDead() const;
@@ -84,4 +85,22 @@ public:
 	void setOnBossEncounterEndedCallback(std::function<void(bool wasDefeated)> callback);
 	void setOnGoldDroppedCallback(std::function<void(BigNumber amount, sf::Vector2f position)> callback);
 	void setOnItemDroppedCallback(std::function<void(int itemIndex, sf::Vector2f position)> callback);
+
+	// Everything about the current encounter that can change frame-to-frame - used by
+	// frame-stepping (see FrameStepHistory). Best-effort only: restoreState() can bring back the
+	// CURRENT enemy's own stats (health, boss timer, animation), but can't undo the enemy itself
+	// dying and a new one spawning in between - that would mean destroying/recreating Enemy
+	// objects, which this debugging feature intentionally doesn't attempt. In practice that only
+	// matters if a single stepped frame happens to land exactly on a kill.
+	struct State
+	{
+		bool hasEnemy = false;
+		Enemy::State enemyState; // only meaningful if hasEnemy
+		unsigned int currentEnemyIndex = 0;
+		int enemyIndexInStage = 0;
+		int currentStageNumber = 1;
+	};
+
+	State captureState() const;
+	void restoreState(const State& state);
 };

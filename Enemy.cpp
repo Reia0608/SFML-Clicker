@@ -334,4 +334,25 @@ void Enemy::drawBossTimer(sf::RenderWindow* window)
 float Enemy::getBossTimeElapsed() const
 {
 	return bossTimeLimit - bossTimeRemaining;
+}
+
+Enemy::State Enemy::captureState() const
+{
+	State state;
+	state.health = health;
+	state.deathAnimationStarted = deathAnimationStarted;
+	state.bossTimeRemaining = bossTimeRemaining;
+	state.spritesState = sprites->captureState();
+	return state;
+}
+
+void Enemy::restoreState(const State& state)
+{
+	health = state.health;
+	deathAnimationStarted = state.deathAnimationStarted;
+	bossTimeRemaining = state.bossTimeRemaining;
+	sprites->restoreState(state.spritesState);
+
+	updateHealthBar();
+	if (isBoss) updateTimerBar();
 };

@@ -1,12 +1,25 @@
 #include "stdafx.h"
 #include "HUD.h"
 #include "PublicVariables.h"
+#include "LayoutManager.h"
+#include "Anchor.h"
 #include <sstream>
 #include <iomanip>
 
 HUD::HUD(std::function<sf::Vector2f()> getTargetPosition, UnlockManager* unlockManager)
 	: getTargetPosition(std::move(getTargetPosition)), unlockManager(unlockManager)
 {
+	pausedText = new Text("Paused", "Fonts/arial.ttf");
+	pausedText->setCharacterSize(48);
+	pausedText->setFillColor(sf::Color::White);
+	pausedText->setOutlineColor(sf::Color::Black);
+	pausedText->setOutlineThickness(3.0f);
+	layoutPausedText();
+}
+
+HUD::~HUD()
+{
+	delete pausedText;
 }
 
 bool HUD::isAttackAvailable(const FamiliarAttack& attack) const
@@ -73,6 +86,13 @@ void HUD::layoutManualAttackEntries()
 	}
 }
 
+void HUD::layoutPausedText()
+{
+	// Centered over the play area (everything left of the UI panel), not the whole window - same
+	// "playArea" bounds Game::pollEvents() already uses to gate a click (clickPos.x < gameAreaWidth).
+	LayoutManager::applyAnchor(*pausedText, Anchor::MiddleCenter, { 0.0f, 0.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
+}
+
 void HUD::sync(const std::vector<Familiar*>& familiarSlots)
 {
 	if (!matchesCurrentSlots(familiarSlots)) rebuildManualAttackEntries(familiarSlots);
@@ -112,9 +132,25 @@ bool HUD::handleClick(sf::Vector2f pos)
 void HUD::render(sf::RenderWindow* window)
 {
 	for (auto& entry : manualAttackEntries) entry.button->render(window);
+
+	if (paused)
+	{
+		window->draw(*pausedText);
+	}
 }
 
 void HUD::onResize()
 {
 	layoutManualAttackEntries();
+	layoutPausedText(); // gameAreaWidth/windowSize may have changed
+}
+
+void HUD::togglePause()
+{
+	paused = !paused;
+}
+
+bool HUD::isPaused() const
+{
+	return paused;
 }

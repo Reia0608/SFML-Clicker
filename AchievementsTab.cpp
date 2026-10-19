@@ -1,6 +1,47 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "AchievementsTab.h"
+#include <sstream>
 
+namespace
+{
+	// Reflows `str` into one or more lines (joined with '\n') so that none of them render wider
+	// than maxWidth in `text`'s current font/character size. Measures by actually setting
+	// candidate lines on `text` and reading back getLocalBounds() - simplest way to get an exact
+	// answer without duplicating SFML's own glyph-advance math. Splitting on whitespace via the
+	// stream extraction also treats any existing '\n' in `str` as a space, so calling this again
+	// on an already-wrapped string (e.g. after a resize) just reflows it from scratch - safe to
+	// call every relayout, not just once.
+	//
+	// maxWidth <= 0 (only happens on the very first layout, before this tab has ever been told its
+	// real content area) returns `str` unchanged rather than wrapping against a nonsense width;
+	// the startup onResize() that always follows calls relayoutLines() again with the real size.
+	std::string wrapTextToWidth(Text* text, const std::string& str, float maxWidth)
+	{
+		if (maxWidth <= 0.0f) return str;
+
+		std::istringstream words(str);
+		std::string word;
+		std::string result;
+		std::string currentLine;
+
+		while (words >> word)
+		{
+			std::string candidate = currentLine.empty() ? word : currentLine + " " + word;
+			text->setString(candidate);
+			if (text->getLocalBounds().size.x > maxWidth && !currentLine.empty())
+			{
+				result += currentLine + "\n";
+				currentLine = word;
+			}
+			else
+			{
+				currentLine = candidate;
+			}
+		}
+		result += currentLine;
+		return result;
+	}
+}
 
 void AchievementsTab::rebuildLines()
 {
@@ -18,7 +59,8 @@ void AchievementsTab::rebuildLines()
 		line.nameText = new Text(achievement->name, "Fonts/arial.ttf");
 		line.nameText->setCharacterSize(14);
 
-		line.descriptionText = new Text(achievement->description + " (Reward: " + achievement->rewardLabel + ")", "Fonts/arial.ttf");
+		line.rawDescription = achievement->description + " (Reward: " + achievement->rewardLabel + ")";
+		line.descriptionText = new Text(line.rawDescription, "Fonts/arial.ttf");
 		line.descriptionText->setCharacterSize(14);
 
 		std::string name = achievement->name;
@@ -71,25 +113,36 @@ void AchievementsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f cont
 void AchievementsTab::relayoutLines()
 {
 	const float margin = 10.0f;
-	const float entryHeight = 40.0f;
+	const float nameToDescriptionGap = 20.0f; // vertical offset from the name line down to the description's first line - independent of how many lines the description wraps to
+	const float entryBottomPadding = 10.0f; // vertical gap after a description's last wrapped line, before the next entry starts
 	const float buttonWidth = 160.0f; // should it not be a variable to better adapt the buttons while resizing the window?
 	const float buttonHeight = 30.0f; // same as above.
+	const float descriptionToButtonGap = 10.0f; // keeps wrapped description text from running into the claim button's column
 
-	contentHeight = margin + lines.size() * entryHeight; // total height of the unscrolled layout, so TabbedPanel can enable scrolling if it overflows
+	// Width available for the description before it would run into the claim button column.
+	// Only <= 0 on the very first rebuildLines() call from the constructor (see wrapTextToWidth).
+	const float descriptionWidth = lastContentAreaSize.x - margin * 2.0f - buttonWidth - descriptionToButtonGap;
 
 	const auto& achievements = achievementManager->getVisibleAchievements();
 
+	float y = lastContentAreaOrigin.y + margin;
 	for (size_t i = 0; i < lines.size() && i < achievements.size(); i++)
 	{
-		float y = lastContentAreaOrigin.y + margin + i * entryHeight;
-		lines[i].nameText->setPosition({ lastContentAreaOrigin.x + margin, y });
-		lines[i].descriptionText->setPosition({ lastContentAreaOrigin.x + margin, y + 20.0f });
+		lines[i].descriptionText->setString(wrapTextToWidth(lines[i].descriptionText, lines[i].rawDescription, descriptionWidth));
 
-		lines[i].claimButton->setLayout( // anchored to the right edge of the content area
+		lines[i].nameText->setPosition({ lastContentAreaOrigin.x + margin, y });
+		lines[i].descriptionText->setPosition({ lastContentAreaOrigin.x + margin, y + nameToDescriptionGap });
+
+		lines[i].claimButton->setLayout( // anchored to the right edge of the content area, level with the name line
 			{ lastContentAreaOrigin.x + lastContentAreaSize.x - margin - buttonWidth, y + 2.0f },
 			{ buttonWidth, buttonHeight }
 		);
+
+		float descriptionHeight = lines[i].descriptionText->getLocalBounds().size.y;
+		y += nameToDescriptionGap + descriptionHeight + entryBottomPadding; // next entry starts right after however tall this one turned out to be
 	}
+
+	contentHeight = y - lastContentAreaOrigin.y; // total height of the unscrolled layout, so TabbedPanel can enable scrolling if it overflows
 }
 
 void AchievementsTab::render(sf::RenderWindow* window)

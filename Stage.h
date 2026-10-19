@@ -97,6 +97,7 @@ public:
 
 	void onResize();
 	void drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& actors = {}, const std::vector<HudElement>& hudElements = {}); // draws tiles, then decorations and actors interleaved back-to-front by ground-Y
+	void drawHUD(sf::RenderWindow* window); // stage name + current enemy/boss label - pushed into Game's hudElements so these go through the same HUD layer as everything else, instead of drawMap drawing them inline
 
 	void updateTexts();
 	void setEnemyInfoText(const std::string& text); // Game calls this every frame with the current enemy's name/progress, or "" when no enemy is on the field

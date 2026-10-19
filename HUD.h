@@ -3,6 +3,7 @@
 #include "Familiar.h"
 #include "UIButton.h"
 #include "UnlockManager.h"
+#include "Text.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -29,8 +30,14 @@ private:
 	void rebuildManualAttackEntries(const std::vector<Familiar*>& familiarSlots);
 	void layoutManualAttackEntries();
 
+	// --- Pause overlay ---
+	bool paused = false;
+	Text* pausedText;
+	void layoutPausedText(); // centers pausedText over the play area - called once on construction and again on every resize
+
 public:
 	HUD(std::function<sf::Vector2f()> getTargetPosition, UnlockManager* unlockManager);
+	~HUD();
 
 	// Rebuilds the button set only if it no longer matches what's slotted (evolution changed
 	// the attack list, or a familiar was assigned/unassigned) - cheap to call every frame,
@@ -40,4 +47,8 @@ public:
 	bool handleClick(sf::Vector2f pos); // true if a HUD widget consumed the click
 	void render(sf::RenderWindow* window);
 	void onResize(); // re-lays-out existing buttons against the new window size
+
+	// --- Pause overlay ---
+	void togglePause(); // flips the paused state - Game calls this when the pause key is pressed
+	bool isPaused() const;
 };

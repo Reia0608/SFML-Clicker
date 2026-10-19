@@ -29,6 +29,7 @@ public:
 	void setInventoryCount(int index, int count); // restores a saved inventory count
 	void addItem(int index); // grants one of the given item - called once a LootDropManager drop visually reaches the ItemBar
 	void resetInventory(); // sets all inventory counts back to 0 (debug use)
+	void adjustAllInventoryCounts(int delta); // adds delta (can be negative) to every item's count at once, clamped at 0 - debug use
 	float getDropChance() const;
 	void setDropChance(float value); // debug use
 

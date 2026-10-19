@@ -146,6 +146,13 @@ void EnemySpawner::render(sf::RenderWindow* window)
 	if (enemy != nullptr)
 	{
 		window->draw(*enemy->getSprites());
+	}
+}
+
+void EnemySpawner::drawHUD(sf::RenderWindow* window)
+{
+	if (enemy != nullptr)
+	{
 		enemy->drawDamageText(window);
 		enemy->drawHealthBar(window);
 		enemy->drawBossTimer(window); // has internal guard. Does nothing if the enemy is not a boss
@@ -312,4 +319,27 @@ void EnemySpawner::setOnGoldDroppedCallback(std::function<void(BigNumber amount,
 void EnemySpawner::setOnItemDroppedCallback(std::function<void(int itemIndex, sf::Vector2f position)> callback)
 {
 	onItemDroppedCallback = std::move(callback);
+}
+
+EnemySpawner::State EnemySpawner::captureState() const
+{
+	State state;
+	state.hasEnemy = (enemy != nullptr);
+	if (state.hasEnemy) state.enemyState = enemy->captureState();
+	state.currentEnemyIndex = currentEnemyIndex;
+	state.enemyIndexInStage = enemyIndexInStage;
+	state.currentStageNumber = currentStageNumber;
+	return state;
+}
+
+void EnemySpawner::restoreState(const State& state)
+{
+	currentEnemyIndex = state.currentEnemyIndex;
+	enemyIndexInStage = state.enemyIndexInStage;
+	currentStageNumber = state.currentStageNumber;
+
+	if (state.hasEnemy && enemy != nullptr)
+	{
+		enemy->restoreState(state.enemyState);
+	}
 }

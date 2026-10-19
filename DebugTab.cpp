@@ -19,6 +19,8 @@ DebugTab::DebugTab(IDebugController* debugController) : debugController(debugCon
 	resetStats = new UIButton("Reset Hero Stats", [this]() { onResetStatsClicked(); });
 	resetItems = new UIButton("Reset Items", [this]() { onResetItemsClicked(); });
 	resetPrices = new UIButton("Reset Shop Prices", [this]() { onResetPricesClicked(); });
+	addAllItems = new UIButton("Add 10 to All Items", [this]() { onAddAllItemsClicked(); });
+	removeAllItems = new UIButton("Remove 10 from All Items", [this]() { onRemoveAllItemsClicked(); });
 }
 
 DebugTab::~DebugTab()
@@ -39,6 +41,8 @@ DebugTab::~DebugTab()
 	delete resetStats;
 	delete resetItems;
 	delete resetPrices;
+	delete addAllItems;
+	delete removeAllItems;
 }
 
 void DebugTab::onSetAttackDamageClicked()
@@ -86,6 +90,16 @@ void DebugTab::onResetPricesClicked()
 	debugController->debugResetShopPrices();
 }
 
+void DebugTab::onAddAllItemsClicked()
+{
+	debugController->debugAdjustAllItems(10);
+}
+
+void DebugTab::onRemoveAllItemsClicked()
+{
+	debugController->debugAdjustAllItems(-10);
+}
+
 void DebugTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize)
 {
 	const float margin = 10.0f;
@@ -108,8 +122,8 @@ void DebugTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentArea
 	}
 
 	float resetRowY = contentAreaOrigin.y + margin + 6 * (rowHeight + spacing) + spacing;
-	UIButton* resetButtons[] = { resetStats, resetItems, resetPrices };
-	for (int i = 0; i < 3; i++)
+	UIButton* resetButtons[] = { resetStats, resetItems, resetPrices, addAllItems, removeAllItems };
+	for (int i = 0; i < 5; i++)
 	{
 		float y = resetRowY + i * (rowHeight + spacing);
 		resetButtons[i]->setLayout({ contentAreaOrigin.x + margin, y }, { contentAreaSize.x - margin * 2.0f, rowHeight });
@@ -134,6 +148,8 @@ void DebugTab::render(sf::RenderWindow* window)
 	resetStats->render(window);
 	resetItems->render(window);
 	resetPrices->render(window);
+	addAllItems->render(window);
+	removeAllItems->render(window);
 }
 
 bool DebugTab::handleClick(sf::Vector2f pos)
@@ -160,6 +176,8 @@ bool DebugTab::handleClick(sf::Vector2f pos)
 	if (resetStats->handleClick(pos)) return true;
 	if (resetItems->handleClick(pos)) return true;
 	if (resetPrices->handleClick(pos)) return true;
+	if (addAllItems->handleClick(pos)) return true;
+	if (removeAllItems->handleClick(pos)) return true;
 	return false;
 }
 

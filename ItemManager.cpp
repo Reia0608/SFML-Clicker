@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "ItemManager.h"
 #include "Randomize.h"
+#include <algorithm>
 
 void ItemManager::initItemDefinitions()
 {
@@ -64,6 +65,14 @@ void ItemManager::addItem(int index)
 void ItemManager::resetInventory()
 {
 	std::fill(inventoryCounts.begin(), inventoryCounts.end(), 0);
+}
+
+void ItemManager::adjustAllInventoryCounts(int delta)
+{
+	for (auto& count : inventoryCounts)
+	{
+		count = std::max(0, count + delta);
+	}
 }
 
 float ItemManager::getDropChance() const

@@ -326,6 +326,44 @@ void Hero::resetToDefaults() // mirrors the member initializers in Hero.h / the 
 	updateCurrencyText();
 }
 
+Hero::State Hero::captureState() const
+{
+	State state;
+	state.attackPower = attackPower;
+	state.currency = currency;
+	state.currencyPulseElapsed = currencyPulseElapsed;
+	state.currencyPulseActive = currencyPulseActive;
+	state.goldMultiplier = goldMultiplier;
+	state.critUnlocked = critUnlocked;
+	state.critChance = critChance;
+	state.critDamageMultiplier = critDamageMultiplier;
+	state.hasAttack1played = hasAttack1played;
+	state.hasAttack2played = hasAttack2played;
+	state.dpsTrackerState = heroDPSTracker.captureState();
+	state.spritesState = sprites->captureState();
+	return state;
+}
+
+void Hero::restoreState(const State& state)
+{
+	attackPower = state.attackPower;
+	currency = state.currency;
+	currencyPulseElapsed = state.currencyPulseElapsed;
+	currencyPulseActive = state.currencyPulseActive;
+	goldMultiplier = state.goldMultiplier;
+	critUnlocked = state.critUnlocked;
+	critChance = state.critChance;
+	critDamageMultiplier = state.critDamageMultiplier;
+	hasAttack1played = state.hasAttack1played;
+	hasAttack2played = state.hasAttack2played;
+	heroDPSTracker.restoreState(state.dpsTrackerState);
+	sprites->restoreState(state.spritesState);
+
+	updateCurrencyText();
+	updateDPSText();
+	updateClickDamageText();
+}
+
 sf::FloatRect Hero::getStatsBounds() const
 {
 	sf::FloatRect currencyBounds = currencyText->getGlobalBounds();

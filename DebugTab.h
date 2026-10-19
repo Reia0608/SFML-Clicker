@@ -31,6 +31,8 @@ class DebugTab : public TabContent
 		UIButton* resetStats;
 		UIButton* resetItems;
 		UIButton* resetPrices;
+		UIButton* addAllItems;
+		UIButton* removeAllItems;
 
 		BigNumber attackDamageValue = BigNumber(1);
 		BigNumber goldValue = BigNumber(10);
@@ -48,6 +50,8 @@ class DebugTab : public TabContent
 		void onResetStatsClicked();
 		void onResetItemsClicked();
 		void onResetPricesClicked();
+		void onAddAllItemsClicked();
+		void onRemoveAllItemsClicked();
 
 	public:
 		DebugTab(IDebugController* debugController);

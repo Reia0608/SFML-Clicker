@@ -32,4 +32,27 @@ class Sprites : public sf::Sprite
 
 		bool isAnimationCurrentlyShowing(std::string stateName) const; // true if `stateName` is the one actually playing right now (one-shot or not)
 		unsigned int getCurrentFrame(std::string stateName) const; // 1-based frame that animation is currently sitting on (same counting as FamiliarAttack::activeFrame) - only meaningful while it IS the one playing
+
+		// True exactly once, the tick stateName's animation's displayed frame genuinely changes -
+		// outNewFrame (1-based) is only meaningful when this returns true. Only ever true for
+		// whichever animation is actually currentState, since a non-playing animation's frame
+		// never changes - no need to separately check isAnimationCurrentlyShowing() first. Lets
+		// gameplay timing (see FamiliarAttack's pendingShotTargetFrame, read in Familiar::update())
+		// react to the exact same clock the sprite is drawn from.
+		bool consumeFrameChange(std::string stateName, unsigned int& outNewFrame);
+
+		// Only the CURRENTLY PLAYING animation's frame state needs saving/restoring - every other
+		// registered animation sits frozen wherever it last was until playAnimation() switches back
+		// to it, which resets it anyway (see Sprites::playAnimation), so there's nothing to lose by
+		// leaving them out. Used by frame-stepping (see FrameStepHistory).
+		struct State
+		{
+			std::string currentState;
+			bool isOneShot = false;
+			std::string returnToState;
+			Textures::State currentAnimationFrame;
+		};
+
+		State captureState() const;
+		void restoreState(const State& state);
 };

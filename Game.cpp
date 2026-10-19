@@ -92,6 +92,24 @@ void Game::pollEvents()
 			{
 				window->close();
 			}
+			else if (keyPressed->scancode == pauseKey)
+			{
+				hud->togglePause();
+				delete frameStepHistory;
+				frameStepHistory = hud->isPaused() ? new FrameStepHistory() : nullptr;
+			}
+			else if (hud->isPaused() && keyPressed->scancode == stepForwardKey)
+			{
+				stepFrameForward();
+			}
+			else if (hud->isPaused() && keyPressed->scancode == stepBackwardKey)
+			{
+				stepFrameBackward();
+			}
+			else if (keyPressed->scancode == rulerKey)
+			{
+				ruler->toggle();
+			}
 		}
 		else if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>())
 		{
@@ -691,6 +709,7 @@ void Game::onWindowResized(sf::Vector2u newSize)
 	// the y origin value is currently fixed! If the Tab Panel Height can change, it should be adjusted here as well
 	debugTab->onResize({ windowSize.x - (tabPanelWidth), 40.0f }, { tabPanelWidth , windowSize.y });
 	hud->onResize();
+	ruler->onResize();
 }
 
 void Game::update()
@@ -701,6 +720,16 @@ void Game::update()
 
 	float dt = times.getDeltaTime();
 
+	if (hud->isPaused())
+	{
+		return; // game state frozen - render() still runs every frame and draws the last state, plus the HUD's "Paused" overlay
+	}
+
+	runSimulationTick(dt);
+}
+
+void Game::runSimulationTick(float dt)
+{
 	statistics->updatePlayTime(dt);
 	updateFamiliarFeatureGates(); // before achievementManager->update(), so a requiredFeature it flips on can be seen by an achievement's condition() this same frame
 	achievementManager->update(); // checks every frame if any achievements have been unlocked
@@ -747,6 +776,24 @@ void Game::update()
 	saveIndicator->update(dt);
 }
 
+void Game::stepFrameForward()
+{
+	if (!frameStepHistory) return; // only reachable while paused, which is when this is created - defensive only
+
+	frameStepHistory->recordBeforeStep(hero, ownedFamiliars, enemySpawner);
+
+	times.nextDeltaTime();
+	float dt = times.getDeltaTime();
+	runSimulationTick(dt);
+}
+
+void Game::stepFrameBackward()
+{
+	if (!frameStepHistory || !frameStepHistory->canStepBack()) return;
+
+	frameStepHistory->stepBack(hero, ownedFamiliars, enemySpawner);
+}
+
 void Game::render()
 {
 	window->clear();
@@ -761,7 +808,8 @@ void Game::render()
 	if (enemySpawner->hasEnemy()) actors.push_back({ enemySpawner->getEnemyGroundY(), [this]() { enemySpawner->render(window); } });
 
 	std::vector<Stage::HudElement> hudElements;
-	// Drawn first so every stat-text element pushed after this paints on top of it - see the
+	hudElements.push_back({ [this]() { stage->drawHUD(window); } }); // stage name + current enemy/boss label - always on top, never occluded by a decoration
+	// Drawn next so every stat-text element pushed after this paints on top of it - see the
 	// member comment on hudStatPanel in Game.h for why this backdrop exists.
 	hudElements.push_back({ [this]() { window->draw(hudStatPanel); } });
 	hudElements.push_back({ [this]() { hero->drawHUD(window); } });
@@ -780,13 +828,22 @@ void Game::render()
 	{
 		hudElements.push_back({ [this]() { window->draw(*activeFamiliarDPSText); } });
 	}
-	// hudElements.push_back({ [this]() { enemySpawner->drawHUD(window); } }); // once EnemySpawner splits out its damage/health text the same way
+	if (enemySpawner->hasEnemy()) hudElements.push_back({ [this]() { enemySpawner->drawHUD(window); } }); // health bar, boss timer, floating damage numbers - always on top, never occluded by a decoration
 
 	stage->drawMap(window, actors, hudElements);
 	itemBar->render(window);
 	lootDropManager->render(window); // drawn after itemBar so a flying item stays visible on top of the bar all the way to its slot, instead of disappearing behind the icon
 	tabbedPanel->render(window);
 	saveIndicator->render(window); // last of all, on top of the UI panel too
+	if (ruler->isVisible())
+	{
+		ruler->render(window);
+		if (hud->isPaused())
+		{
+			sf::Vector2f mouseWorldPos = window->mapPixelToCoords(sf::Mouse::getPosition(*window));
+			ruler->renderCrosshair(window, mouseWorldPos);
+		}
+	}
 
 	window->display();
 }
@@ -858,6 +915,7 @@ Game::Game()
 	initEnemySpawner();
 	initUI();
 	initSaveIndicator();
+	ruler = new Ruler();
 
 	enemySpawner->setOnBossEncounterEndedCallback([this](bool wasDefeated)
 		{
@@ -898,6 +956,8 @@ Game::~Game()
 	delete passiveFamiliarDPSText;
 	delete activeFamiliarDPSText;
 	delete hud;
+	delete frameStepHistory;
+	delete ruler;
 }
 
 void Game::running()
@@ -974,6 +1034,11 @@ void Game::debugSetHeroCritChance(float value)
 void Game::debugSetHeroCritDamage(int percent)
 {
 	hero->setCritDamageMultiplier(percent / 100.0); // 150 -> 1.5
+}
+
+void Game::debugAdjustAllItems(int delta)
+{
+	itemManager->adjustAllInventoryCounts(delta);
 }
 
 void Game::debugResetHeroStats()

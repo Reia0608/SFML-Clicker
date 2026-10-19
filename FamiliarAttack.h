@@ -75,13 +75,14 @@ struct FamiliarAttack
 	// frame damage lands on; for ranged, the frame the first projectile is spawned on.
 	// Everything before it is windup with no gameplay effect yet. Defaults to 1 - "the effect
 	// happens immediately on activation" - which is every attack's behavior before this field
-	// existed, so any attack that doesn't set this is unaffected. See
-	// Familiar::startAttack/resolveAttack for how this is actually used - the short version is
-	// that it's a plain timer (activeFrame-1)*animationFrameTimerMax seconds long, counted
-	// independently of whatever the sprite is actually showing at the time, so this attack's
-	// damage/projectile still lands exactly on schedule even on a frame where some OTHER
-	// attack's animation is the one actually visible (see the no-interrupt rule in
-	// Familiar::startAttack).
+	// existed, so any attack that doesn't set this is unaffected. See Familiar::update() for how
+	// this is actually used: while this attack's animation is the one actually playing, the shot
+	// fires the instant the sprite's real displayed frame genuinely becomes activeFrame - there's
+	// only one clock (the sprite's own), so it can never drift from what's on screen. If a manual
+	// attack preempts this one's animation before it gets there, Familiar::update() falls back to
+	// a plain elapsed-time countdown instead (see fallbackCountdown below), so this attack's
+	// damage/projectile still lands exactly on schedule even though its animation isn't the one
+	// actually visible any more (see the no-interrupt rule in Familiar::startAttack).
 	unsigned int activeFrame = 1;
 
 	// Where a ranged attack's projectile actually appears, as an offset in pixels from this
@@ -162,10 +163,31 @@ struct FamiliarAttack
 	float cooldownRemaining = 0.0f;
 	Textures* projectileTexture = nullptr; // owning; allocated by Familiar when this attack is instantiated on a live familiar
 	Textures* enemyEffectTexture = nullptr; // owning; allocated by Familiar when this attack is instantiated, only if spawnsEnemyEffect
-	float activeFrameCountdown = -1.0f;    // seconds left until this attack's activeFrame fires; negative = nothing pending
 	int shotsFiredThisActivation = 0;      // how many of projectileCount's shots have fired since the last beginActivation()
-	float loopFireCountdown = -1.0f;       // seconds until the next loop-driven shot fires; negative = not currently mid-loop
 	bool windupStarted = false;            // true once this cycle's auto-attack windup has begun (see Familiar::update) - reset false each time its cooldown resets, so the next cycle can start its own windup in turn
+
+	// The next shot's timing - see Familiar::update() for exactly how these four are driven.
+	// pendingShotTargetFrame (1-based) is which frame this attack is waiting to land on for its
+	// NEXT shot - activeFrame for the first shot, getLoopActiveFrame() for every shot after
+	// that; -1 means no shot is currently owed. While this attack's animation is the one
+	// actually playing, that's all Familiar::update() needs - it fires the instant the sprite's
+	// real displayed frame becomes pendingShotTargetFrame, so there's only one clock driving both
+	// the visuals and the gameplay effect, and they can never disagree.
+	//
+	// fallbackArmed/fallbackFrame/fallbackCountdown only come into play if a manual attack
+	// preempts this one's animation before pendingShotTargetFrame is reached - from that moment
+	// on, this attack's own animation sits frozen for the rest of the activation (nothing ever
+	// resumes it), so there's nothing left to watch. Familiar::update() then switches this
+	// attack to counting fallbackCountdown down in plain elapsed time instead, so the shot still
+	// lands exactly on schedule, just without being visible. fallbackFrame is this attack's own
+	// virtual "where it would be" position: seeded once (fallbackArmed) from the real frame it
+	// got frozen on, then advanced directly to whatever frame was just virtually reached each
+	// time a fallback-driven shot fires - it's never re-read from the sprite again, since the
+	// sprite itself has stopped moving.
+	int pendingShotTargetFrame = -1;
+	bool fallbackArmed = false;
+	unsigned int fallbackFrame = 0;
+	float fallbackCountdown = -1.0f;
 
 	bool isReady() const { return cooldownRemaining <= 0.0f; }
 	// effectiveCooldown: this attack's actual current cooldown (baseCooldown minus any purchased
@@ -175,94 +197,62 @@ struct FamiliarAttack
 	void tick(float dt) { if (cooldownRemaining > 0.0f) cooldownRemaining = std::max(0.0f, cooldownRemaining - dt); }
 
 	// Seconds from this attack's activation to its activeFrame - 0 if activeFrame is 1 (or 0,
-	// which would otherwise underflow since activeFrame is unsigned).
+	// which would otherwise underflow since activeFrame is unsigned). Used only to decide how
+	// early an auto-attack's windup should start (see Familiar::update()) - a pure calculation
+	// from this attack's own fixed data, independent of the pendingShotTargetFrame machinery
+	// below.
 	float getActiveFrameDelay() const
 	{
 		return activeFrame > 1 ? static_cast<float>(activeFrame - 1) * animationFrameTimerMax : 0.0f;
-	}
-
-	void beginActiveFrameCountdown() { activeFrameCountdown = getActiveFrameDelay(); }
-
-	// Ticks the countdown toward this attack's active frame. Returns true exactly once - the
-	// frame it crosses zero - telling the caller (Familiar::update) to resolve this attack's
-	// actual effect right now. Runs purely on time; never looks at the sprite.
-	bool tickActiveFrameCountdown(float dt)
-	{
-		if (activeFrameCountdown < 0.0f) return false; // nothing pending
-		activeFrameCountdown -= dt;
-		if (activeFrameCountdown <= 0.0f)
-		{
-			activeFrameCountdown = -1.0f; // consumed - back to "nothing pending"
-			return true;
-		}
-		return false;
 	}
 
 	bool hasLoop() const { return loopStartFrame > 0 && loopEndFrame >= loopStartFrame; }
 
 	unsigned int getLoopActiveFrame() const { return loopActiveFrame > 0 ? loopActiveFrame : loopStartFrame; }
 
-	// Seconds for one full pass through the loop range - how often a repeat shot comes due once looping.
-	float getLoopPeriod() const
+	bool hasPendingShot() const { return pendingShotTargetFrame >= 0; }
+
+	// Seconds of animation playback between fromFrame and targetFrame (both 1-based), walking
+	// forward exactly the way the sprite itself advances: straight ahead if targetFrame is still
+	// ahead of fromFrame, or one full lap around this attack's loop range if it's behind or
+	// equal to fromFrame - which only happens right after fromFrame was itself this attack's own
+	// most recent shot, so reaching targetFrame again means coming all the way back around.
+	// Only ever called with targetFrame <= fromFrame when this attack hasLoop() - see
+	// Familiar::update()'s fallback-timer branch, the only caller.
+	float framesToSeconds(unsigned int fromFrame, unsigned int targetFrame) const
 	{
-		return hasLoop() ? static_cast<float>(loopEndFrame - loopStartFrame + 1) * animationFrameTimerMax : 0.0f;
+		if (targetFrame > fromFrame)
+			return static_cast<float>(targetFrame - fromFrame) * animationFrameTimerMax;
+
+		unsigned int framesForward = (loopEndFrame - fromFrame) + (targetFrame - loopStartFrame) + 1;
+		return static_cast<float>(framesForward) * animationFrameTimerMax;
 	}
 
-	// Starts a fresh activation of this attack: resets the shot counter and begins the
-	// countdown to its first shot (fired from activeFrame, exactly as every attack has always
-	// worked). Call this instead of beginActiveFrameCountdown() directly.
+	// Starts a fresh activation of this attack: resets the shot counter and arms the wait for
+	// the first shot, due on activeFrame. Call this instead of setting pendingShotTargetFrame
+	// directly.
 	void beginActivation()
 	{
 		shotsFiredThisActivation = 0;
-		loopFireCountdown = -1.0f;
-		beginActiveFrameCountdown();
+		pendingShotTargetFrame = static_cast<int>(activeFrame);
+		fallbackArmed = false;
 	}
 
 	// Call once a shot has just fired (from activeFrame or from the loop). Returns true if this
-	// attack still owes more shots this activation, and arms loopFireCountdown for the next
-	// one; false once projectileCount has been fully reached (or this attack has no loop to
-	// repeat into), telling the caller the animation should stop re-wrapping its loop and
-	// continue on instead.
+	// attack still owes more shots this activation, and arms pendingShotTargetFrame for the next
+	// one (always getLoopActiveFrame() - every repeat shot waits on the same frame); false once
+	// projectileCount has been fully reached (or this attack has no loop to repeat into), telling
+	// the caller the animation should stop re-wrapping its loop and continue on instead.
 	bool registerShotFired()
 	{
 		shotsFiredThisActivation++;
 		if (!hasLoop() || shotsFiredThisActivation >= static_cast<int>(projectileCount))
 		{
-			loopFireCountdown = -1.0f;
+			pendingShotTargetFrame = -1;
 			return false;
 		}
-
-		if (shotsFiredThisActivation == 1)
-		{
-			// From the single activeFrame shot just fired to the loop's own active frame being
-			// reached for the first time - less than a full pass, unless they're the same frame
-			// (e.g. Bubble Stream, where activeFrame IS the loop's start), in which case this
-			// shot already WAS that frame, so the next one is a full pass away.
-			unsigned int loopFrame = getLoopActiveFrame();
-			loopFireCountdown = loopFrame > activeFrame
-				? static_cast<float>(loopFrame - activeFrame) * animationFrameTimerMax
-				: getLoopPeriod();
-		}
-		else
-		{
-			loopFireCountdown = getLoopPeriod(); // every shot after the second is exactly one full pass later
-		}
+		pendingShotTargetFrame = static_cast<int>(getLoopActiveFrame());
 		return true;
-	}
-
-	// Ticks the countdown to the next loop-driven shot. Returns true exactly once per shot that
-	// comes due - the caller (Familiar::update) should resolve this attack's effect again right
-	// now, same as tickActiveFrameCountdown() does for the first shot.
-	bool tickLoopFireCountdown(float dt)
-	{
-		if (loopFireCountdown < 0.0f) return false;
-		loopFireCountdown -= dt;
-		if (loopFireCountdown <= 0.0f)
-		{
-			loopFireCountdown = -1.0f; // consumed - registerShotFired() (called right after) re-arms it if more shots remain
-			return true;
-		}
-		return false;
 	}
 
 	bool hasSelfMovement() const { return riseEndFrame > 0; }

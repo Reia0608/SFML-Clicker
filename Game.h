@@ -27,6 +27,8 @@
 #include "DPSTracker.h"
 #include "Text.h"
 #include "HUD.h"
+#include "FrameStepHistory.h"
+#include "Ruler.h"
 #include <array>
 
 
@@ -114,7 +116,7 @@ private:
 					.projectileScale = 5.0f, // bigger than the auto-attack fireball used to be, it's the "big fireball" now
 					.projectileTravelDuration = 1.8f,
 					.activeFrame = 6,
-					.projectileSpawnOffset = {244.0f, 16.0f},
+					.projectileSpawnOffset = {244.0f, 46.0f},
 					.unlockFeatureKey = "FireDragonFireballUnlocked" // gated: hidden from the HUD until FamiliarTab's purchase button sets this (see FamiliarTab.cpp, and the "Juvenile Flame" achievement in AchievementManager.cpp that unlocks that purchase button in the first place)
 				}
 			}),
@@ -478,6 +480,30 @@ private:
 
 	void handleBossEncounterEnded(bool wasDefeated);
 
+	// Pause - a plain field (not a constant) so a future Options entry can remap it without
+	// touching this file again. Checked in pollEvents() (toggles hud's paused state) and
+	// update() (skips advancing game state while paused) - see HUD::isPaused()/togglePause().
+	sf::Keyboard::Scancode pauseKey = sf::Keyboard::Scancode::P;
+
+	// Remappable the same way, for the same future-Options reason. Only acted on while paused -
+	// see pollEvents().
+	sf::Keyboard::Scancode stepForwardKey = sf::Keyboard::Scancode::Right;
+	sf::Keyboard::Scancode stepBackwardKey = sf::Keyboard::Scancode::Left;
+
+	// Remappable the same way. Toggled independently of pause - see pollEvents(); unlike
+	// frameStepHistory this has no "only means something while paused" reason to be transient, so
+	// it's just a plain owned member, same as hud.
+	sf::Keyboard::Scancode rulerKey = sf::Keyboard::Scancode::R;
+	Ruler* ruler = nullptr;
+
+	// Only exists between pausing and unpausing - created/destroyed in pollEvents() alongside
+	// hud->togglePause(), so it can never be asked to step anything while the game is running.
+	FrameStepHistory* frameStepHistory = nullptr;
+
+	void runSimulationTick(float dt); // the per-frame game-logic body - factored out of update() so a manual single step (stepFrameForward()) can run exactly one tick without duplicating it
+	void stepFrameForward();
+	void stepFrameBackward();
+
 	void onWindowResized(sf::Vector2u newSize);
 	void pollEvents();
 	void update();
@@ -510,6 +536,7 @@ public:
 	void debugSetItemDropChance(float value) override;
 	void debugSetHeroCritChance(float value) override;
 	void debugSetHeroCritDamage(int percent) override;
+	void debugAdjustAllItems(int delta) override;
 	void debugResetHeroStats() override;
 	void debugResetItems() override;
 	void debugResetShopPrices() override;

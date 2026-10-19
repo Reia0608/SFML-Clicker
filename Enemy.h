@@ -79,4 +79,18 @@ public:
 	void drawBossTimer(sf::RenderWindow* window);
 
 	float getBossTimeElapsed() const; // seconds since the boss encounter started (bossTimeLimit - bossTimeRemaining)
+
+	// Everything about this enemy that can change frame-to-frame - used by frame-stepping (see
+	// FrameStepHistory). Deliberately excludes damageNumbers (the floating "123!" popups) -
+	// purely cosmetic, and FloatingDamageText has no capture/restore support of its own.
+	struct State
+	{
+		BigNumber health;
+		bool deathAnimationStarted = false;
+		float bossTimeRemaining = 0.0f;
+		Sprites::State spritesState;
+	};
+
+	State captureState() const;
+	void restoreState(const State& state);
 };
