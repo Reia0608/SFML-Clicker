@@ -2,6 +2,7 @@
 #include "stdafx.h"
 #include "BigNumber.h"
 #include "Hero.h"
+#include "HUD.h"
 #include "ItemBar.h"
 #include "ItemManager.h"
 #include <vector>
@@ -50,7 +51,8 @@ private:
 		}
 	};
 
-	Hero* hero;               // non-owning, part of Game - gives us the Gold counter's HUD position and is nudged via the collected callback in Game, never called directly here except getCurrencyTextPosition()
+	Hero* hero;               // non-owning, part of Game - nudged via the collected callback in Game, never called directly here
+	HUD* hud;                 // non-owning, part of Game - gives us the Gold counter's HUD position (getCurrencyTextPosition())
 	ItemBar* itemBar;         // non-owning, part of Game - gives us each item slot's HUD position
 	ItemManager* itemManager; // non-owning, part of Game - gives us the item icon sheet + item definitions
 
@@ -84,7 +86,7 @@ private:
 	void drawItemShine(sf::RenderWindow* window, const LootDrop& drop) const;
 
 public:
-	LootDropManager(Hero* hero, ItemBar* itemBar, ItemManager* itemManager);
+	LootDropManager(Hero* hero, HUD* hud, ItemBar* itemBar, ItemManager* itemManager);
 	~LootDropManager();
 
 	// Called by Game, wired to EnemySpawner's onGoldDroppedCallback/onItemDroppedCallback -

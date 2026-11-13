@@ -36,6 +36,15 @@ public:
 	void setUnlocked(const std::string& name, bool unlocked); // restores saved state without re-granting the gold/item reward
 	bool claimReward(const std::string& name); // grants the gold and/or item reward once, returns false if not unlocked yet or already claimed
 	void setClaimed(const std::string& name, bool claimed); // restores saved claimed-state without granting the reward again
+
+	// achievement.description alone for every achievement except "Flame Mastery"/"Tidal Mastery"/
+	// "Gale Mastery" - for those three, appends the actual elemental-damage target, read live from
+	// unlockManager->getElementalDamageThreshold() rather than baked into the stored description
+	// text, since that number is only fixed once the matching familiar is actually unlocked (see
+	// UnlockManager's unlock-order ladder). Safe to call anytime, including repeatedly - the
+	// number can only ever be read after it's already correct, never before. AchievementsTab calls
+	// this instead of reading achievement.description directly.
+	std::string describeWithLiveNumbers(const Achievement& achievement) const;
 	std::function<void(const Achievement&)> onAchievementUnlocked; // fired when the condition is first met (background auto-unlock)
 	std::function<void(const Achievement&)> onAchievementClaimed;  // fired when the player manually claims the reward via the button
 };

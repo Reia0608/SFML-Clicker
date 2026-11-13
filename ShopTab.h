@@ -7,6 +7,7 @@
 #include "Statistics.h"
 #include "Familiar.h"
 #include "UnlockManager.h"
+#include <functional>
 
 
 class ShopTab : public TabContent
@@ -43,7 +44,11 @@ private:
 	double critChanceUnlockValue = 0.005;
 	double critChanceIncreaseAmount = 0.0025;
 
-	BigNumber familiarCost = BigNumber(5000); // one-time unlock cost, no scaling
+	// The one-time Fire Dragon unlock cost is no longer stored here - it's always
+	// unlockManager->getNextFamiliarUnlockCost(), the same shared, species-agnostic unlock-order
+	// ladder Water/Wind's own unlock buttons in FamiliarTab read from (see UnlockManager.h). Fire
+	// just happens to normally be whichever familiar is unlocked FIRST, since this button is the
+	// only one reachable before the Familiars tab itself exists.
 
 	BigNumber critDamageCost = BigNumber(150);
 	double critDamageIncreaseAmount = 0.10;
@@ -76,6 +81,11 @@ public:
 
 	void increaseGoldMultiplierGain(float amount); // called once when "Hoarder" unlocks: doubles goldMultiplierIncreaseAmount permanently,
 	// and rebalances hero's current multiplier as if every past purchase had used the new amount
+
+	// Fired right after the Fire Dragon unlock purchase succeeds - Game wires this to refresh
+	// FamiliarTab's own still-locked unlock buttons, since their displayed price depends on the
+	// same shared unlock-order ladder this purchase just advanced (see UnlockManager.h).
+	std::function<void()> onFamiliarUnlocked;
 
 	// for save/ load
 	// Persistence: current prices aren't derivable from Hero's stats alone (e.g. attack power

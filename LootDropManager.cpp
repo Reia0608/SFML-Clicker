@@ -9,8 +9,8 @@
 // out as a single row - coinsanimated.png is 112x16, i.e. 7 frames.
 static const std::string coinSpriteSheetPath = "Textures/PNG/Items/coinsanimated.png";
 
-LootDropManager::LootDropManager(Hero* hero, ItemBar* itemBar, ItemManager* itemManager)
-	: hero(hero), itemBar(itemBar), itemManager(itemManager)
+LootDropManager::LootDropManager(Hero* hero, HUD* hud, ItemBar* itemBar, ItemManager* itemManager)
+	: hero(hero), hud(hud), itemBar(itemBar), itemManager(itemManager)
 {
 	if (!coinTexture.loadFromFile(coinSpriteSheetPath))
 	{
@@ -143,7 +143,7 @@ void LootDropManager::updateDrop(LootDrop& drop, float dt)
 		float easedT = t * t; // ease-in - accelerates as if being pulled in
 
 		sf::Vector2f target = (drop.type == DropType::Gold)
-			? hero->getCurrencyTextPosition()
+			? hud->getCurrencyTextPosition()
 			: itemBar->getSlotPosition(drop.itemIndex);
 
 		sf::Vector2f pos = drop.flyStartPos + (target - drop.flyStartPos) * easedT;

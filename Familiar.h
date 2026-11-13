@@ -5,6 +5,7 @@
 #include "Textures.h"
 #include "FamiliarType.h"
 #include "FamiliarAttack.h"
+#include "FamiliarPassive.h"
 #include "ElementalPower.h"
 #include "Text.h"
 #include "DPSTracker.h"
@@ -35,10 +36,40 @@ private:
 	ElementalPower bonusElementalPower;
 	float bonusCooldownReduction = 0.0f;
 
+	// Lifetime total of this familiar's own ELEMENTAL damage dealt (auto-attacks, manual
+	// abilities, and - once built - any passive like Fire's burn), counted from the moment this
+	// familiar is unlocked and never reset by evolving - same persists-across-evolutions treatment
+	// as the purchased upgrades just above, for the same reason. This is exactly what the
+	// elemental-damage achievement that unlocks this familiar's passive ability is measured
+	// against (see UnlockManager::getElementalDamageThreshold()).
+	BigNumber cumulativeElementalDamage = BigNumber(0);
+
+	// Lifetime total of this familiar's own PHYSICAL damage dealt (auto-attacks and manual
+	// abilities - a passive never deals physical damage, see recordPassiveElementalDamage below) -
+	// same persists-across-evolutions treatment as cumulativeElementalDamage just above, kept as
+	// its own counter purely so StatisticsTab can show physical/elemental damage as two independent
+	// lifetime totals instead of one pre-mixed number.
+	BigNumber cumulativePhysicalDamage = BigNumber(0);
+
+	// Lifetime total of damage dealt by this familiar's PASSIVE ability alone (e.g. one tick of
+	// Fire Dragon's Burn) - a SUBSET of cumulativeElementalDamage above (every passive today deals
+	// elemental damage), tracked separately purely for StatisticsTab's own "Passive Damage" line.
+	// Deliberately does NOT replace cumulativeElementalDamage's own passive-tick bookkeeping (see
+	// recordPassiveElementalDamage) - that total still needs to include passive ticks for
+	// UnlockManager::getElementalDamageThreshold()'s existing achievement math to keep working
+	// exactly as it did before this counter was added.
+	BigNumber cumulativePassiveDamage = BigNumber(0);
+
 	Sprites* sprites;
 	DPSTracker familiarDPSTracker;
 
 	std::vector<FamiliarAttack> attacks; // runtime instances, built from FamiliarType::attacks at construction/evolveTo
+
+	// This familiar's CURRENT stage's passive ability data (Burn, Soaked, Keen Gale, ...) - copied
+	// from FamiliarType::passive at construction/evolveTo(), exactly like attacks above, so
+	// getPassive() always reflects whichever stage this familiar is currently at. Default-
+	// constructed (empty name) until evolving into a stage that actually has one.
+	FamiliarPassive passive;
 
 	std::vector<Projectile> activeProjectiles; // projectiles currently in flight, from any ranged attack
 	std::vector<Projectile> activeEffects; // non-traveling visual effects currently playing (e.g. a wind-slice overlay) - see FamiliarAttack::spawnsEnemyEffect. Reuses Projectile purely as "an animated sprite that plays at a fixed point for a duration" - these never deal damage and never trigger onDamageDealt
@@ -130,12 +161,41 @@ public:
 
 	size_t getAttackCount() const;
 	const FamiliarAttack& getAttack(size_t index) const; // for HUD: name/cooldown/isAutoAttack, to build buttons and labels
+	const FamiliarPassive& getPassive() const { return passive; } // this familiar's CURRENT stage's passive ability data - see the member comment above
+	std::string getLabel() const { return label; } // this familiar's current display label (e.g. "Baby Fire Dragon", then "Fire Dragon" once evolved) - read by StatisticsTab for its per-familiar header
 	bool isManualAttackReady(size_t attackIndex) const;
 	bool activateManualAttack(size_t attackIndex, sf::Vector2f targetPosition); // false (no-op) if not ready or not manual
 
 	void setOnDamageDealtCallback(std::function<void(BigNumber damage, ElementMask mask)> callback); // called once per landed hit
 	void setElementalMultiplierResolver(std::function<double(Elements)> resolver); // wired by Game to EnemySpawner::getEnemyElementalMultiplierForElement - resolves one element at a time, so a multi-element attack scales each element by its own multiplier rather than an average
 	BigNumber rollDamage() const; // physical + elemental of the primary auto-attack (base + bonus) - a rough "power level" preview, no resistances applied
+
+	// Lifetime elemental damage dealt by this familiar - see the member comment above. Read by
+	// AchievementManager to evaluate this familiar's passive-ability achievement condition.
+	BigNumber getCumulativeElementalDamage() const;
+
+	// Lifetime PHYSICAL-only and PASSIVE-only damage totals - see the member comments above for why
+	// these are tracked separately from cumulativeElementalDamage. Read by StatisticsTab.
+	BigNumber getCumulativePhysicalDamage() const;
+	BigNumber getCumulativePassiveDamage() const;
+
+	// This familiar's current total power (base + purchased bonus) in one element, read from its
+	// PRIMARY auto-attack - the same "this familiar's own elemental power" figure rollDamage() and
+	// increaseElementalAttack() already treat as representative, just isolated to one element and
+	// without any physical power mixed in. Used by passive abilities whose effect scales with this
+	// familiar's elemental power independently of any specific attack landing (e.g. Fire Dragon's
+	// Burn) - always reads live, so a purchased elemental-power upgrade is reflected the very next
+	// tick. Returns 0 if this familiar has no auto-attack, or its auto-attack doesn't use `element`.
+	BigNumber getCurrentElementalPower(Elements element) const;
+
+	// Credits this familiar's own DPS tracker and lifetime elemental-damage counter with `amount`
+	// of elemental damage dealt OUTSIDE its normal attack/projectile pipeline (e.g. one tick of
+	// Fire Dragon's Burn). Deliberately does NOT fire onDamageDealt - a passive tick's own damage
+	// must never re-enter whatever logic that callback drives (e.g. Game re-applying the very
+	// status effect that caused this tick in the first place). The caller is responsible for
+	// actually applying the damage to the enemy itself (see EnemySpawner::handleClick) and for any
+	// floating-text/visual feedback - this only updates this familiar's own bookkeeping.
+	void recordPassiveElementalDamage(BigNumber amount);
 
 	// Purchased upgrades - ShopTab calls these; they only ever affect auto-attacks (see class comment above).
 	// Method names/signatures kept stable from before this refactor so ShopTab.cpp didn't need to change.
@@ -159,6 +219,10 @@ public:
 	void setBonusCooldownReduction(float value);
 	float getBonusCooldownReduction() const;
 
+	void setCumulativeElementalDamage(BigNumber value); // restores the saved lifetime total - absolute set, same pattern as setBonusPhysicalPower above
+	void setCumulativePhysicalDamage(BigNumber value);  // same, for cumulativePhysicalDamage
+	void setCumulativePassiveDamage(BigNumber value);   // same, for cumulativePassiveDamage
+
 	float getAttackCooldown(size_t attackIndex) const; // returns that attack's current EFFECTIVE cooldown (base - bonus, floored) - for HUD display
 
 	void evolveTo(FamiliarType newType); // swaps sprites/attacks to a later evolution stage in place; bonusPhysicalPower/bonusElementalPower/bonusCooldownReduction/unlocked are preserved
@@ -179,6 +243,9 @@ public:
 		BigNumber bonusPhysicalPower;
 		ElementalPower bonusElementalPower;
 		float bonusCooldownReduction = 0.0f;
+		BigNumber cumulativeElementalDamage;
+		BigNumber cumulativePhysicalDamage;
+		BigNumber cumulativePassiveDamage;
 		std::vector<FamiliarAttack> attacks;
 		std::vector<Projectile> activeProjectiles;
 		std::vector<Projectile> activeEffects;

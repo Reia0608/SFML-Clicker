@@ -128,6 +128,7 @@ Familiar::Familiar(FamiliarType familiarType)
 	currentAge = familiarType.age;
 	label = familiarType.label;
 	type = familiarType.type;
+	passive = familiarType.passive;
 
 	initSprites(familiarType.idleAnimationAddress, familiarType.idleFrameTimerMax, familiarType.spriteSize, familiarType.attacks);
 	setupAttacks(familiarType.attacks);
@@ -237,6 +238,8 @@ void Familiar::resolveAttack(FamiliarAttack& attack, sf::Vector2f targetPosition
 		// independently (no averaging across elements) - see ElementalPower::computeDamage.
 		BigNumber elementalDamage = elemental.computeDamage(elementalMultiplierResolver);
 		BigNumber finalDamage = physical + elementalDamage;
+		cumulativeElementalDamage = cumulativeElementalDamage + elementalDamage;
+		cumulativePhysicalDamage = cumulativePhysicalDamage + physical;
 		familiarDPSTracker.recordDamage(finalDamage);
 		if (onDamageDealt) onDamageDealt(finalDamage, elemental.getMask());
 	}
@@ -339,7 +342,10 @@ void Familiar::update(float dt, sf::Vector2f targetPosition)
 			// at the moment of impact - not against whatever was there when the projectile
 			// launched. computeDamage() resolves each element this projectile carries against
 			// its own multiplier independently, with no averaging.
-			BigNumber finalDamage = activeProjectile->getPhysicalDamage() + activeProjectile->getElementalPower().computeDamage(elementalMultiplierResolver);
+			BigNumber elementalDamage = activeProjectile->getElementalPower().computeDamage(elementalMultiplierResolver);
+			BigNumber finalDamage = activeProjectile->getPhysicalDamage() + elementalDamage;
+			cumulativeElementalDamage = cumulativeElementalDamage + elementalDamage;
+			cumulativePhysicalDamage = cumulativePhysicalDamage + activeProjectile->getPhysicalDamage();
 
 			familiarDPSTracker.recordDamage(finalDamage);
 			if (onDamageDealt) onDamageDealt(finalDamage, activeProjectile->getElementalPower().getMask()); // Game applies the damage to whatever is currently at that spot
@@ -462,6 +468,51 @@ BigNumber Familiar::getBonusPhysicalPower() const
 	return bonusPhysicalPower;
 }
 
+BigNumber Familiar::getCumulativeElementalDamage() const
+{
+	return cumulativeElementalDamage;
+}
+
+BigNumber Familiar::getCumulativePhysicalDamage() const
+{
+	return cumulativePhysicalDamage;
+}
+
+BigNumber Familiar::getCumulativePassiveDamage() const
+{
+	return cumulativePassiveDamage;
+}
+
+BigNumber Familiar::getCurrentElementalPower(Elements element) const
+{
+	// Searches every attack (auto AND manual), not just the primary auto-attack - which attack
+	// actually carries a given element can change across evolution stages (e.g. Fire Dragon's
+	// Fireball starts as its Baby auto-attack, then becomes a Juvenile+ manual ability once Claw
+	// Swipe takes over as the auto-attack), and a passive scaling off "this familiar's elemental
+	// power" needs to keep finding it either way. Bonus is only folded in when the attack that
+	// carries it is an auto-attack, same rule bonuses already follow everywhere else (see the
+	// class comment on bonusPhysicalPower/bonusElementalPower above) - a manual ability never gets
+	// purchased bonuses, so neither does this.
+	ElementMask targetBit = elementBit(element);
+	for (const auto& attack : attacks)
+	{
+		if (!attack.usesElementalDamage) continue;
+		if (!(attack.baseElementalPower.getMask() & targetBit)) continue;
+
+		return attack.isAutoAttack
+			? attack.baseElementalPower.addMatching(bonusElementalPower).get(element)
+			: attack.baseElementalPower.get(element);
+	}
+	return BigNumber(0);
+}
+
+void Familiar::recordPassiveElementalDamage(BigNumber amount)
+{
+	cumulativeElementalDamage = cumulativeElementalDamage + amount;
+	cumulativePassiveDamage = cumulativePassiveDamage + amount;
+	familiarDPSTracker.recordDamage(amount);
+}
+
 BigNumber Familiar::getBonusElementalPower(Elements element) const
 {
 	return bonusElementalPower.get(element);
@@ -544,6 +595,21 @@ float Familiar::getBonusCooldownReduction() const
 	return bonusCooldownReduction;
 }
 
+void Familiar::setCumulativeElementalDamage(BigNumber value)
+{
+	cumulativeElementalDamage = value;
+}
+
+void Familiar::setCumulativePhysicalDamage(BigNumber value)
+{
+	cumulativePhysicalDamage = value;
+}
+
+void Familiar::setCumulativePassiveDamage(BigNumber value)
+{
+	cumulativePassiveDamage = value;
+}
+
 float Familiar::getAttackCooldown(size_t attackIndex) const
 {
 	return attackIndex < attacks.size() ? getEffectiveCooldown(attacks[attackIndex]) : 0.0f;
@@ -555,6 +621,7 @@ void Familiar::evolveTo(FamiliarType newType)
 	currentAge = newType.age;
 	label = newType.label;
 	type = newType.type;
+	passive = newType.passive;
 
 	delete sprites;
 	initSprites(newType.idleAnimationAddress, newType.idleFrameTimerMax, newType.spriteSize, newType.attacks);
@@ -592,6 +659,9 @@ Familiar::State Familiar::captureState() const
 	state.bonusPhysicalPower = bonusPhysicalPower;
 	state.bonusElementalPower = bonusElementalPower;
 	state.bonusCooldownReduction = bonusCooldownReduction;
+	state.cumulativeElementalDamage = cumulativeElementalDamage;
+	state.cumulativePhysicalDamage = cumulativePhysicalDamage;
+	state.cumulativePassiveDamage = cumulativePassiveDamage;
 	state.attacks = attacks;
 	state.activeProjectiles = activeProjectiles;
 	state.activeEffects = activeEffects;
@@ -606,6 +676,9 @@ void Familiar::restoreState(const State& state)
 	bonusPhysicalPower = state.bonusPhysicalPower;
 	bonusElementalPower = state.bonusElementalPower;
 	bonusCooldownReduction = state.bonusCooldownReduction;
+	cumulativeElementalDamage = state.cumulativeElementalDamage;
+	cumulativePhysicalDamage = state.cumulativePhysicalDamage;
+	cumulativePassiveDamage = state.cumulativePassiveDamage;
 	attacks = state.attacks;
 	activeProjectiles = state.activeProjectiles;
 	activeEffects = state.activeEffects;

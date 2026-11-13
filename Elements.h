@@ -16,6 +16,7 @@ enum Elements
 	Dark,
 	Chaos,
 	Poison,
+	Lightning, // added last so every already-saved element's integer value (used as a raw array index in save/load, see Game::saveToFile/loadFromFile) stays unchanged
 	ElementCount // keep last - not a real element, used to size arrays / loop bounds
 };
 
@@ -41,17 +42,18 @@ inline std::string elementToString(Elements element)
 {
 	switch (element)
 	{
-	case Fire: return "Fire";
-	case Water: return "Water";
-	case Earth: return "Earth";
-	case Wind: return "Wind";
-	case Ice: return "Ice";
-	case Metal: return "Metal";
-	case Light: return "Light";
-	case Dark: return "Dark";
-	case Chaos: return "Chaos";
-	case Poison: return "Poison";
-	default: return "Unknown";
+		case Fire: return "Fire";
+		case Water: return "Water";
+		case Earth: return "Earth";
+		case Wind: return "Wind";
+		case Ice: return "Ice";
+		case Metal: return "Metal";
+		case Light: return "Light";
+		case Dark: return "Dark";
+		case Chaos: return "Chaos";
+		case Poison: return "Poison";
+		case Lightning: return "Lightning";
+		default: return "Unknown";
 	}
 }
 
@@ -78,7 +80,8 @@ inline const ElementColorGradient& getElementColorGradient(Elements element)
 			/* Light  */ { sf::Color(255, 250, 200), sf::Color(255, 255, 255) },// warm pale yellow -> white
 			/* Dark   */ { sf::Color(55, 0, 85),     sf::Color(170, 30, 200) },// deep violet -> magenta-purple
 			/* Chaos  */ { sf::Color(210, 0, 160),   sf::Color(255, 150, 0) }, // magenta -> orange (jarring on purpose - "unstable")
-			/* Poison */ { sf::Color(90, 0, 140),    sf::Color(150, 235, 30) } // violet -> acid green
+			/* Poison */ { sf::Color(90, 0, 140),    sf::Color(150, 235, 30) },// violet -> acid green
+			/* Lightning */ { sf::Color(255, 225, 0), sf::Color(215, 230, 255) } // vivid yellow -> pale electric blue-white - placeholder, easy to retune
 		} };
 	return gradients[static_cast<size_t>(element)];
 }

@@ -42,6 +42,11 @@ inline float tabPanelWidthRatio = 0.35f; // target: 35% of the current window wi
 inline float tabPanelWidthMin = 300.0f;  // narrowest the panel is allowed to get
 inline float tabPanelWidthMax = 460.0f;  // widest the panel is allowed to get, so a huge window doesn't hand it all the space
 
+inline int tabBodyTextSize = 14;      // body text size (px) for scrollable-list tab content (Achievements, Statistics) - configurable in Options (OptionsTab::onTextSizeClicked), clamped to [tabBodyTextSizeMin, tabBodyTextSizeMax]
+inline int tabBodyTextSizeMin = 12;
+inline int tabBodyTextSizeMax = 18;
+inline int tabTitleTextSizeBonus = 4; // how many px larger a tab's title/name label (an achievement's name, a familiar's header) is than tabBodyTextSize - keeps titles reading as headers at every body size
+
 inline float uiPanelWidth = itemBarWidth + tabPanelWidth;
 inline float gameAreaWidth = windowSize.x - uiPanelWidth; // width of the play area (Hero, Enemy and Background)
 inline float spriteScale = 2.0f;

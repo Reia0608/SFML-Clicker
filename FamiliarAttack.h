@@ -215,14 +215,30 @@ struct FamiliarAttack
 	// Seconds of animation playback between fromFrame and targetFrame (both 1-based), walking
 	// forward exactly the way the sprite itself advances: straight ahead if targetFrame is still
 	// ahead of fromFrame, or one full lap around this attack's loop range if it's behind or
-	// equal to fromFrame - which only happens right after fromFrame was itself this attack's own
-	// most recent shot, so reaching targetFrame again means coming all the way back around.
-	// Only ever called with targetFrame <= fromFrame when this attack hasLoop() - see
-	// Familiar::update()'s fallback-timer branch, the only caller.
+	// equal to fromFrame - which is meant to only happen right after fromFrame was itself this
+	// attack's own most recent shot, so reaching targetFrame again means coming all the way back
+	// around.
+	//
+	// fromFrame isn't always that fresh, though - see Familiar::update()'s fallback-timer branch,
+	// the only caller: it reads fromFrame from Sprites::getCurrentFrame(), which for an attack
+	// that ISN'T the one currently playing just returns wherever that attack's own animation was
+	// last left - e.g. a non-looping attack like Claw Swipe sitting at its own sheet's final frame
+	// after a normal, uninterrupted playthrough, which is >= its own activeFrame. If that attack
+	// then gets preempted before its NEXT activation reaches activeFrame again, fromFrame arrives
+	// here already at or past targetFrame despite there being no loop to wrap back through - computing
+	// the wraparound formula below for that case would underflow (unsigned arithmetic) into a
+	// multi-million-second "duration", permanently stalling this attack (its cooldown ring parked
+	// at 0, never firing again). Guard it here rather than trust every caller to uphold the
+	// original precondition: with no loop to wrap through, or with fromFrame already past
+	// loopEndFrame (the loop already finished and playback moved on into an outro/the sheet's own
+	// end), there's no sensible future frame to count down to - resolve on the very next tick instead.
 	float framesToSeconds(unsigned int fromFrame, unsigned int targetFrame) const
 	{
 		if (targetFrame > fromFrame)
 			return static_cast<float>(targetFrame - fromFrame) * animationFrameTimerMax;
+
+		if (!hasLoop() || fromFrame > loopEndFrame)
+			return 0.0f;
 
 		unsigned int framesForward = (loopEndFrame - fromFrame) + (targetFrame - loopStartFrame) + 1;
 		return static_cast<float>(framesForward) * animationFrameTimerMax;

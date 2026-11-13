@@ -12,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 
 const std::string Game::saveFilePath = "Save/savegame.json";
 
@@ -110,6 +111,15 @@ void Game::pollEvents()
 			{
 				ruler->toggle();
 			}
+			else if (keyPressed->scancode == fpsCounterKey)
+			{
+				fpsCounter->toggle();
+			}
+			else if (keyPressed->scancode == autoAttackKey && unlockManager->isUnlocked("HeroAutoAttackUnlocked"))
+			{
+				hero->toggleAutoAttack();
+				if (optionsTab) optionsTab->refreshLabels(); // keeps its button's ON/OFF label in sync even when toggled via the hotkey instead of a click
+			}
 		}
 		else if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>())
 		{
@@ -117,50 +127,41 @@ void Game::pollEvents()
 			{
 				sf::Vector2f clickPos = window->mapPixelToCoords(mousePressed->position);
 
+				// While the familiar picker popup is open it covers the play area too (see
+				// FamiliarTab::renderPicker()), so a click landing there must never also reach a
+				// HUD manual-attack button or count as the hero's own click damage underneath it -
+				// both of those are checked here, BEFORE the click would otherwise reach
+				// tabbedPanel (and from there FamiliarTab::handleClick(), which already absorbs
+				// every click while its popup is open regardless of where on screen it lands).
+				bool pickerOpen = familiarTab->isPickerOpen();
+
 				// A HUD manual-attack button takes priority over everything below it - consuming
 				// the click here means it never also reaches tabbedPanel or deals the hero's own
 				// click damage.
-				bool consumedByHud = clickPos.x < gameAreaWidth && hud->handleClick(clickPos);
+				bool consumedByHud = clickPos.x < gameAreaWidth && !pickerOpen && hud->handleClick(clickPos);
 				if (!consumedByHud)
 				{
-					if (clickPos.x < gameAreaWidth)
+					if (clickPos.x < gameAreaWidth && !pickerOpen)
 					{
 						statistics->recordClick();
 					}
 
 					if (!tabbedPanel->handleClick(clickPos) && clickPos.x < gameAreaWidth)
 					{
-						bool wasCritical = false;
-						BigNumber damage = hero->rollDamage(wasCritical);
-						bool hitEnemy = enemySpawner->handleClick(damage, wasCritical);
-						if (hitEnemy)
-						{
-							if (hero->getHasAttack2played())
-							{
-								hero->setHasAttack2played(false);
-								hero->playAttack1Animation();
-								hero->setHasAttack1played(true);
-							}
-							else if (hero->getHasAttack1played())
-							{
-								hero->setHasAttack1played(false);
-								hero->playAttack2Animation();
-								hero->setHasAttack2played(true);
-							}
-							else
-							{
-								hero->playAttack1Animation();
-								hero->setHasAttack1played(true);
-							}
-
-							hero->recordDamageDealt(damage);
-							if (wasCritical)
-							{
-								statistics->recordCriticalHit();
-							}
-						}
+						performHeroAttack();
 					}
 				}
+			}
+		}
+		else if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>())
+		{
+			tabbedPanel->handleMouseMoved(window->mapPixelToCoords(mouseMoved->position)); // only does anything while a scrollbar drag is in progress
+		}
+		else if (const auto* mouseReleased = event->getIf<sf::Event::MouseButtonReleased>())
+		{
+			if (mouseReleased->button == sf::Mouse::Button::Left)
+			{
+				tabbedPanel->handleMouseReleased(); // ends a scrollbar drag, if one was in progress
 			}
 		}
 		else if (const auto* wheelScrolled = event->getIf<sf::Event::MouseWheelScrolled>())
@@ -173,6 +174,62 @@ void Game::pollEvents()
 		else if (const auto* textEntered = event->getIf<sf::Event::TextEntered>())
 		{
 			tabbedPanel->handleTextEntered(textEntered->unicode);
+			checkDebugUnlockCode(textEntered->unicode);
+		}
+	}
+}
+
+void Game::checkDebugUnlockCode(char32_t unicode)
+{
+	if (debugUnlocked || unicode > 127) // already unlocked, or not a plain ASCII character - ignore
+	{
+		return;
+	}
+
+	debugUnlockBuffer += static_cast<char>(std::tolower(static_cast<unsigned char>(unicode)));
+
+	const std::string debugCode = "debug";
+	if (debugUnlockBuffer.size() > debugCode.size())
+	{
+		debugUnlockBuffer.erase(0, debugUnlockBuffer.size() - debugCode.size()); // keep only the last few characters typed
+	}
+
+	if (debugUnlockBuffer == debugCode)
+	{
+		debugUnlocked = true;
+	}
+}
+
+void Game::performHeroAttack()
+{
+	bool wasCritical = false;
+	KeenGaleCritBonus keenGale = computeKeenGaleCritBonus(); // 0/0 unless Wind Dragon is slotted and its passive's bought - see the comment on it in Game.h
+	BigNumber damage = hero->rollDamage(wasCritical, keenGale.chanceBonus, keenGale.damageBonus);
+	bool hitEnemy = enemySpawner->handleClick(damage, wasCritical);
+	if (hitEnemy)
+	{
+		if (hero->getHasAttack2played())
+		{
+			hero->setHasAttack2played(false);
+			hero->playAttack1Animation();
+			hero->setHasAttack1played(true);
+		}
+		else if (hero->getHasAttack1played())
+		{
+			hero->setHasAttack1played(false);
+			hero->playAttack2Animation();
+			hero->setHasAttack2played(true);
+		}
+		else
+		{
+			hero->playAttack1Animation();
+			hero->setHasAttack1played(true);
+		}
+
+		hero->recordDamageDealt(damage);
+		if (wasCritical)
+		{
+			statistics->recordCriticalHit();
 		}
 	}
 }
@@ -182,10 +239,15 @@ void Game::initUI()
 	itemBar = new ItemBar(itemManager);
 	tabbedPanel = new TabbedPanel();
 	shopTab = new ShopTab(hero, statistics, familiar, unlockManager);
-	tabbedPanel->addTab("Shop", shopTab);
+	tabbedPanel->addTab("Shop", "Textures/UI/gold_coin_pouch.png", shopTab);
 	familiarTab = new FamiliarTab(hero, itemManager, unlockManager, statistics,
 		ownedFamiliars[FireDragon], ownedFamiliars[WaterDragon], ownedFamiliars[WindDragon]);
-	tabbedPanel->addTab("Familiars", familiarTab, [this]() { return familiar && familiar->isUnlocked(); });
+	// Generalized: reveals once ANY familiar has been unlocked, whichever species it was - not
+	// hardcoded to Fire specifically. In practice Fire is still the only one reachable before this
+	// tab exists (its button lives in ShopTab - see ShopTab::onBuyFamiliarClicked), but the check
+	// itself no longer assumes that, so a future discovery method (e.g. a random encounter) that
+	// unlocks a different species first still works correctly here.
+	tabbedPanel->addTab("Familiars", "Textures/UI/baby_dragon.png", familiarTab, [this]() { return unlockManager->hasAnyFamiliarUnlocked(); });
 
 	// Generalized evolve wiring, used by every lineage's self-updating evolve button (see
 	// FamiliarTab::addFamiliarEvolveButton()). FamiliarTab only knows the NAME of the next stage
@@ -218,14 +280,35 @@ void Game::initUI()
 	// reports the player's intent back through these (see the "Familiar slots" block in Game.h).
 	familiarTab->onSlotPurchased = [this]() { onFamiliarSlotPurchased(); };
 	familiarTab->getSlotCount = [this]() { return getFamiliarSlotCount(); };
-	familiarTab->getSlotFamiliarLabel = [this](int slotIndex) { return getFamiliarSlotLabel(slotIndex); };
-	familiarTab->getAvailableFamiliarNames = [this]() { return getAvailableFamiliarNamesForSlotting(); };
+	familiarTab->getSlotFamiliarIcon = [this](int slotIndex) { return getFamiliarSlotIcon(slotIndex); };
+	familiarTab->getAvailableFamiliarIcons = [this]() { return getAvailableFamiliarIconsForSlotting(); };
 	familiarTab->onAssignFamiliarToSlot = [this](int slotIndex, int pickedIndex) { assignFamiliarToSlot(slotIndex, pickedIndex); };
 	familiarTab->onUnassignSlot = [this](int slotIndex) { unassignFamiliarSlot(slotIndex); };
 	familiarTab->refreshSlotButtons(); // populate the slot list now that the callbacks above are wired (starts empty - slots are bought, not free)
 
+	// ShopTab's Fire-unlock purchase advances UnlockManager's shared unlock-order ladder too (see
+	// ShopTab::onBuyFamiliarClicked) - nudge FamiliarTab's still-locked unlock buttons to show
+	// their new (10x higher) price immediately, the same way a Water/Wind purchase inside
+	// FamiliarTab already refreshes its siblings. Also flashes StatisticsTab's tab button, same as
+	// any other familiar unlock (see familiarTab->onFamiliarUnlocked just below) - Fire's own
+	// unlock is the one path that happens outside FamiliarTab entirely, so it needs its own nudge.
+	shopTab->onFamiliarUnlocked = [this]()
+	{
+		if (familiarTab) familiarTab->refreshUnlockButtonLabels();
+		if (statisticsTab) statisticsTab->markPending();
+	};
+
+	// Flashes StatisticsTab's tab button the moment a familiar actually gets bought here (Water/
+	// Wind - see FamiliarTab::addFamiliarUnlockButton), or a damage-dealing passive (e.g. Burn)
+	// actually gets purchased (see FamiliarTab::addAttackUnlockButton's passiveDealsDamage flag) -
+	// both are the moment new per-familiar rows become visible on that tab (see
+	// StatisticsTab::refreshFamiliarBlocks()). statisticsTab doesn't exist yet at this point in
+	// initUI() - that's fine, these lambdas only read it later, once the player actually clicks.
+	familiarTab->onFamiliarUnlocked = [this]() { if (statisticsTab) statisticsTab->markPending(); };
+	familiarTab->onDamagingPassiveUnlocked = [this]() { if (statisticsTab) statisticsTab->markPending(); };
+
 	achievementsTab = new AchievementsTab(achievementManager);
-	tabbedPanel->addTab("Achievements", achievementsTab);
+	tabbedPanel->addTab("Achievements", "Textures/UI/achievement_trophy.png", achievementsTab);
 	achievementManager->onAchievementUnlocked = [this](const Achievement& achievement)
 	{
 		achievementsTab->markPending();
@@ -259,6 +342,34 @@ void Game::initUI()
 			if (familiarTab) familiarTab->markPending();
 		}
 
+		// Passive-ability achievements - same two-step pattern as the manual-ability ones just
+		// above: claiming doesn't grant the passive itself, only reveals FamiliarTab's purchase
+		// button for it (see FamiliarTab.cpp's addAttackUnlockButton() calls for these).
+		if (achievement.name == "Flame Mastery")
+		{
+			unlockManager->unlock("FireDragonBurnPurchasable");
+			if (familiarTab) familiarTab->markPending();
+		}
+
+		if (achievement.name == "Tidal Mastery")
+		{
+			unlockManager->unlock("WaterDragonSoakedPurchasable");
+			if (familiarTab) familiarTab->markPending();
+		}
+
+		if (achievement.name == "Gale Mastery")
+		{
+			unlockManager->unlock("WindDragonKeenGalePurchasable");
+			if (familiarTab) familiarTab->markPending();
+		}
+
+		if (achievement.name == "Autopilot")
+		{
+			unlockManager->unlock("HeroAutoAttackUnlocked");
+			if (optionsTab) optionsTab->refreshLabels(); // reveals the newly-unlocked button immediately, same spirit as familiarTab->refreshButtonVisibility() just below
+			if (optionsTab) optionsTab->markPending(); // flash the Options tab button - same pulse as a familiar-ability unlock flashing the Familiars tab
+		}
+
 		// FamiliarTab's purchase buttons only recompute their own visibility when something
 		// inside FamiliarTab triggers it (a slot/evolve purchase, a resize) - claiming an
 		// achievement here never touches FamiliarTab at all, so without this the newly-
@@ -277,11 +388,21 @@ void Game::initUI()
 		// if (achievement.name == "Veteran Slayer") unlockManager->unlock("SomeShopUpgradeKey");
 	};
 
-	tabbedPanel->addTab("Statistics", new StatisticsTab(hero, statistics));
-	optionsTab = new OptionsTab(this, this);
-	tabbedPanel->addTab("Options", optionsTab);
+	// Passes every OWNED familiar slot (locked or not) - StatisticsTab only ever shows the ones
+	// that are actually unlocked (see StatisticsTab::refreshFamiliarBlocks()), same "hidden takes
+	// no space" rule as the rest of the UI. A vector rather than three named parameters (unlike
+	// FamiliarTab's constructor) so adding a 4th lineage later only means adding its pointer here,
+	// not changing StatisticsTab's own signature.
+	statisticsTab = new StatisticsTab(hero, statistics, unlockManager,
+		{ ownedFamiliars[FireDragon], ownedFamiliars[WaterDragon], ownedFamiliars[WindDragon] });
+	statisticsTab->getCritChanceBonus = [this]() { return computeKeenGaleCritBonus().chanceBonus; };
+	statisticsTab->getCritDamageBonus = [this]() { return computeKeenGaleCritBonus().damageBonus; };
+	tabbedPanel->addTab("Statistics", "Textures/UI/scroll_frame.png", statisticsTab);
+	optionsTab = new OptionsTab(this, this, unlockManager, hero);
+	optionsTab->onTabTextSizeChanged = [this]() { tabbedPanel->onResize(); }; // picks up the new tabBodyTextSize immediately, even on a tab that isn't currently scrolled (see the field's own comment in OptionsTab.h)
+	tabbedPanel->addTab("Options", "Textures/UI/settings.png", optionsTab);
 	debugTab = new DebugTab(this);
-	tabbedPanel->addTab("Debug", debugTab);
+	tabbedPanel->addTab("Debug", "Textures/UI/error_cross.png", debugTab, [this]() { return debugUnlocked; });
 
 	hud = new HUD([this]() { return enemySpawner->getEnemyPosition(); }, unlockManager);
 }
@@ -304,9 +425,21 @@ void Game::initFamiliars()
 		if (typeIndex < 0) continue; // this species' baby stage isn't defined in familiarTypeList (yet) - leave its slot nullptr rather than crash
 
 		Familiar* f = new Familiar(familiarTypeList[typeIndex]);
-		f->setOnDamageDealtCallback([this](BigNumber damage, ElementMask mask) // fires once per landed hit - melee-instant or projectile-arrival alike
+		f->setOnDamageDealtCallback([this, speciesName, f](BigNumber damage, ElementMask mask) // fires once per landed hit - melee-instant or projectile-arrival alike
 			{
 				enemySpawner->handleClick(damage, false, Familiar::dpsColor, mask); // familiar attacks (auto or manual) don't crit for now; colored to match activeFamiliarDPSText unless mask carries an element, in which case the element's gradient wins (see Enemy::showDamage)
+
+				// Fire Dragon's Burn / Water Dragon's Soaked - see the comment on applyFireBurn()/
+				// applySoaked() in Game.h. passive.name.empty() guards a stage that doesn't define
+				// a passive at all (not used by current content, but keeps this correct once one
+				// exists); unlockFeatureKey is read from the SAME data the purchase button and
+				// achievement reference, rather than a separately-typed string literal here.
+				const FamiliarPassive& passive = f->getPassive();
+				if (!passive.name.empty() && unlockManager->isUnlocked(passive.unlockFeatureKey))
+				{
+					if (speciesName == FireDragon && (mask & elementBit(Fire))) applyFireBurn(f);
+					if (speciesName == WaterDragon && (mask & elementBit(Water))) applySoaked(f);
+				}
 			});
 		f->setElementalMultiplierResolver([this](Elements element)
 			{
@@ -317,6 +450,70 @@ void Game::initFamiliars()
 	}
 
 	familiar = ownedFamiliars[static_cast<size_t>(FireDragon)]; // see the member comment in Game.h - temporary alias until Fire's remaining special cases are migrated onto the roster
+
+	// Fire Dragon's Burn visual - the same placeholder "red fireball" sheet its own Fireball
+	// projectile already uses (see familiarTypeList's Baby Fire Dragon entry); loaded once here
+	// rather than per-tick, same reasoning as any other Textures allocation in this codebase.
+	fireBurnVisualTexture = new Textures("Textures/Familiars/Dragons/sprites/effect/fire_bolt/red/fire_bolt_small/fire_bolt_small.png", { 60, 60 }, 6);
+	fireBurnVisualTexture->setFrameTimerMax(0.10f);
+	fireBurnVisualTexture->setFrameTimer(0.10f);
+	fireBurnVisualTexture->setSmooth(false);
+}
+
+void Game::applyFireBurn(Familiar* fireDragon)
+{
+	const FamiliarPassive& passive = fireDragon->getPassive();
+
+	enemySpawner->applyStatusEffectToEnemy(passive.name, "FireDragon", passive.duration, passive.permanent, passive.tickInterval,
+		[this, fireDragon]()
+		{
+			// Read fresh every tick, independent of whatever attack originally applied this burn -
+			// a purchased elemental-power upgrade (or the enemy weakness/resistance changing, e.g.
+			// a new enemy spawning mid-burn) is reflected on the very next tick.
+			double multiplier = enemySpawner->getEnemyElementalMultiplierForElement(Fire);
+			BigNumber tickDamage = fireDragon->getCurrentElementalPower(Fire) * BigNumber(multiplier);
+
+			fireDragon->recordPassiveElementalDamage(tickDamage); // this familiar's own DPS/achievement bookkeeping - deliberately NOT onDamageDealt (see its comment in Familiar.h)
+			enemySpawner->handleClick(tickDamage, false, Familiar::dpsColor, elementMaskOf({ Fire })); // actually damages the enemy and shows the floating number, same pipeline as any other hit
+			enemySpawner->playStatusEffectVisualOnEnemy(*fireBurnVisualTexture, fireBurnVisualScale, fireBurnVisualDuration, fireBurnVisualOffset);
+		});
+}
+
+void Game::applySoaked(Familiar* waterDragon)
+{
+	const FamiliarPassive& passive = waterDragon->getPassive();
+
+	// No onTick (Soaked deals no damage of its own, just changes how much damage THIS enemy takes
+	// from Water/Ice/Lightning - see Enemy::getEffectiveElementalMultiplier()) and tickInterval is
+	// irrelevant for the same reason - any positive value works since it's never actually read.
+	enemySpawner->applyStatusEffectToEnemy(passive.name, "WaterDragon", passive.duration, passive.permanent, 1.0f, nullptr,
+		waterSoakedAffectedElements, passive.magnitude, passive.forceNeutralAffinity);
+}
+
+Game::KeenGaleCritBonus Game::computeKeenGaleCritBonus() const
+{
+	KeenGaleCritBonus result;
+
+	Familiar* windDragon = ownedFamiliars[static_cast<size_t>(WindDragon)];
+	if (!windDragon || !windDragon->isUnlocked() || !isFamiliarInAnySlot(windDragon))
+		return result; // no bonus at all unless Wind Dragon is actually slotted right now
+
+	const FamiliarPassive& passive = windDragon->getPassive();
+	if (passive.name.empty() || !unlockManager->isUnlocked(passive.unlockFeatureKey))
+		return result; // this stage has no passive, or it hasn't been bought yet
+
+	result.chanceBonus = passive.magnitude;
+
+	if (passive.overflowConvertsToSecondaryStat)
+	{
+		double totalChance = hero->getCritChance() + result.chanceBonus;
+		if (totalChance > 1.0)
+		{
+			result.damageBonus = (totalChance - 1.0) * keenGaleOvercritToCritDamageRatio;
+		}
+	}
+
+	return result;
 }
 
 int Game::findFamiliarTypeIndex(FamiliarName name, Age age) const
@@ -409,108 +606,27 @@ double Game::computeFamiliarPassiveDamagePerSecond() const
 	return familiarPassiveBaseDamagePerSecond * familiarCountMultiplier * evolutionMultiplier;
 }
 
-namespace
-{
-	sf::FloatRect unionRects(const sf::FloatRect& a, const sf::FloatRect& b)
-	{
-		float left = std::min(a.position.x, b.position.x);
-		float top = std::min(a.position.y, b.position.y);
-		float right = std::max(a.position.x + a.size.x, b.position.x + b.size.x);
-		float bottom = std::max(a.position.y + a.size.y, b.position.y + b.size.y);
-		return sf::FloatRect({ left, top }, { right - left, bottom - top });
-	}
-}
-
-void Game::initHUDStatPanel()
-{
-	hudStatPanel.setFillColor(sf::Color(10, 8, 6, 140)); // dark, semi-transparent - same style as TabbedPanel's own background rectangle
-	hudStatPanel.setOutlineColor(sf::Color::Black);
-	hudStatPanel.setOutlineThickness(1.0f);
-	updateHUDStatPanelLayout(); // seed a valid initial size/position; also recomputed every frame from Game::update()
-}
-
-void Game::updateHUDStatPanelLayout()
-{
-	sf::FloatRect bounds = hero->getStatsBounds(); // currency/Hero DPS/click damage are always shown
-
-	if (familiar && familiar->isUnlocked()) // passive familiar DPS - same unlock gate as its visibility in render()
-	{
-		bounds = unionRects(bounds, passiveFamiliarDPSText->getGlobalBounds());
-	}
-
-	bool anyFamiliarActive = std::any_of(familiarSlots.begin(), familiarSlots.end(), [](Familiar* f) { return f != nullptr; });
-	if (anyFamiliarActive) // combined active-familiar DPS - same unlock gate as its visibility in render()
-	{
-		bounds = unionRects(bounds, activeFamiliarDPSText->getGlobalBounds());
-	}
-
-	hudStatPanel.setPosition({ bounds.position.x - hudStatPanelPadding, bounds.position.y - hudStatPanelPadding });
-	hudStatPanel.setSize({ bounds.size.x + hudStatPanelPadding * 2.0f, bounds.size.y + hudStatPanelPadding * 2.0f });
-}
-
-void Game::initPassiveFamiliarDPSText()
-{
-	passiveFamiliarDPSText = new Text("Passive Familiar DPS: " + passiveFamiliarDPSTracker.getDPS().toString(), "Fonts/arial.ttf");
-	// Pale lavender - source-identity color for "passive familiar damage", the third of the trio
-	// alongside Hero::dpsText (pale gold) and Game::activeFamiliarDPSText (pale silver-blue). See
-	// the comments there for why these are deliberately desaturated rather than vivid hues.
-	passiveFamiliarDPSText->setFillColor(passiveDPSColor);
-	passiveFamiliarDPSText->setOutlineColor(sf::Color::Black);
-	passiveFamiliarDPSText->setOutlineThickness(2.0f);
-	updatePassiveFamiliarDPSText();
-}
-
-void Game::updatePassiveFamiliarDPSText()
-{
-	passiveFamiliarDPSText->setString("Passive Familiar DPS: " + passiveFamiliarDPSTracker.getDPS().toString());
-	// -120: sits below Game::activeFamiliarDPSText's -160 - passive damage unlocks as soon as any
-	// familiar is unlocked, while Familiar DPS additionally requires that familiar to be slotted
-	// (a later step), so this line appears first/lower in the stack.
-	LayoutManager::applyAnchor(*passiveFamiliarDPSText, Anchor::BottomRight, { -10.0f, -120.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
-
-void Game::initActiveFamiliarDPSText()
-{
-	activeFamiliarDPSText = new Text("Familiar DPS: " + BigNumber(0).toString(), "Fonts/arial.ttf");
-	// Pale silver-blue - same source-identity color every slotted familiar's own DPS text used to
-	// use individually (Familiar::dpsColor) - now shared by the one combined line that replaces
-	// all of them, so floating damage numbers on the enemy still match this HUD line's color.
-	activeFamiliarDPSText->setFillColor(Familiar::dpsColor);
-	activeFamiliarDPSText->setOutlineColor(sf::Color::Black);
-	activeFamiliarDPSText->setOutlineThickness(2.0f);
-	updateActiveFamiliarDPSText();
-}
-
-void Game::updateActiveFamiliarDPSText()
-{
-	BigNumber total(0);
-	for (Familiar* activeFamiliar : familiarSlots)
-	{
-		if (activeFamiliar) total = total + activeFamiliar->getFamiliarDPS();
-	}
-	activeFamiliarDPSText->setString("Familiar DPS: " + total.toString());
-	// -160: top of the BottomRight stat stack - this requires a familiar to be actively slotted
-	// (not just unlocked), which happens later than everything below it, including
-	// passiveFamiliarDPSText's passive DPS line at -120 (unlocks as soon as any familiar is
-	// unlocked, no slotting needed).
-	LayoutManager::applyAnchor(*activeFamiliarDPSText, Anchor::BottomRight, { -10.0f, -160.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
-
 void Game::updateFamiliarPassiveDamage(float dt)
 {
 	passiveFamiliarDPSTracker.update(dt); // ages out old events every frame, whether or not a new one is recorded below - same pattern as Familiar::update()/Hero::updateDPS()
-	updatePassiveFamiliarDPSText();
+	hud->setPassiveFamiliarDPS(passiveFamiliarDPSTracker.getDPS());
 
 	if (!familiar || !familiar->isUnlocked()) return; // passive damage only starts once the first familiar is unlocked
 
 	passiveDamageTickTimer += dt;
+	int ticksThisFrame = 0; // TEMPORARY - FPS-drop investigation, see FrameProfiler.h
 	while (passiveDamageTickTimer >= passiveDamageTickInterval) // a `while`, not an `if`, so a lag spike still deals every tick it was owed rather than dropping ticks
 	{
 		passiveDamageTickTimer -= passiveDamageTickInterval;
+		ticksThisFrame++;
 
 		BigNumber passiveDamage = BigNumber(std::round(computeFamiliarPassiveDamagePerSecond()));
-		enemySpawner->handleClick(passiveDamage, false, passiveDPSColor); // passive damage never crits; colored to match passiveFamiliarDPSText; no-op if there's currently no enemy on the field
+		enemySpawner->handleClick(passiveDamage, false, HUD::passiveDPSColor); // passive damage never crits; colored to match HUD's "Passive Familiar DPS" line; no-op if there's currently no enemy on the field
 		passiveFamiliarDPSTracker.recordDamage(passiveDamage); // recorded regardless of whether an enemy was actually there to take it - matches how DPS trackers elsewhere in the codebase count "damage attempted this tick", not confirmed hits
+	}
+	if (ticksThisFrame > 1) // TEMPORARY - see above
+	{
+		std::cout << "[FrameProfiler] passive-damage tick caught up " << ticksThisFrame << " ticks in one frame" << std::endl;
 	}
 }
 
@@ -522,6 +638,7 @@ BigNumber Game::getFamiliarPassiveDPS() const
 void Game::onFamiliarSlotPurchased()
 {
 	familiarSlots.push_back(nullptr); // one more empty slot - the player assigns a familiar to it afterward, via FamiliarTab's picker
+	unlockManager->unlock("FirstFamiliarSlotBought"); // gates the "Expand the Ranks" achievement - see AchievementManager::initAchievements(). Species-agnostic (any slot purchase counts), so this never needs touching for a future lineage.
 }
 
 int Game::getFamiliarSlotCount() const
@@ -529,23 +646,36 @@ int Game::getFamiliarSlotCount() const
 	return static_cast<int>(familiarSlots.size());
 }
 
-std::string Game::getFamiliarSlotLabel(int slotIndex) const
+FamiliarIcon Game::buildFamiliarIcon(Familiar* f) const
 {
-	if (slotIndex < 0 || slotIndex >= static_cast<int>(familiarSlots.size())) return "";
+	// Looks f's current (species, stage) pair up in familiarTypeList rather than storing a
+	// separate display-name/sprite-path field anywhere else - same lookup getFamiliarSlotLabel()
+	// used to do for just the label, now also pulling the idle sheet + its first frame's rect.
+	int typeIndex = findFamiliarTypeIndex(f->getName(), f->getAge());
+	if (typeIndex < 0) return {}; // shouldn't normally happen - fallback to an "empty" icon rather than crashing on a bad lookup
+
+	const FamiliarType& type = familiarTypeList[typeIndex];
+	FamiliarIcon icon;
+	icon.texturePath = type.idleAnimationAddress;
+	icon.sourceRect = sf::IntRect({ 0, 0 }, sf::Vector2i(type.spriteSize)); // the idle sheet's very first frame - see FamiliarIcon's own comment in FamiliarTab.h for why only ever this one frame
+	icon.displayLabel = type.label;
+	return icon;
+}
+
+FamiliarIcon Game::getFamiliarSlotIcon(int slotIndex) const
+{
+	if (slotIndex < 0 || slotIndex >= static_cast<int>(familiarSlots.size())) return {};
 
 	Familiar* occupant = familiarSlots[slotIndex];
-	if (!occupant) return "";
+	if (!occupant) return {}; // empty slot - FamiliarIcon::isEmpty() reports this to FamiliarTab
 
-	// Looks the occupant's current (species, stage) pair up in familiarTypeList rather than
-	// storing a separate display-name field anywhere.
-	int typeIndex = findFamiliarTypeIndex(occupant->getName(), occupant->getAge());
-	return typeIndex >= 0 ? familiarTypeList[typeIndex].label : "Familiar"; // fallback if its current stage somehow isn't in familiarTypeList
+	return buildFamiliarIcon(occupant);
 }
 
 std::vector<Familiar*> Game::getAvailableFamiliarsForSlotting() const
 {
 	// Every owned (Fire/Water/Wind), unlocked, currently-unassigned familiar, in ownedFamiliars'
-	// fixed lineage order. Both getAvailableFamiliarNamesForSlotting() (what FamiliarTab's picker
+	// fixed lineage order. Both getAvailableFamiliarIconsForSlotting() (what FamiliarTab's picker
 	// shows) and assignFamiliarToSlot() (what a picked row actually resolves to) derive from this
 	// SAME list, so a pickedIndex the picker handed back always means the same familiar here -
 	// they'd silently disagree if each rebuilt its own filtered list independently.
@@ -560,15 +690,11 @@ std::vector<Familiar*> Game::getAvailableFamiliarsForSlotting() const
 	return available;
 }
 
-std::vector<std::string> Game::getAvailableFamiliarNamesForSlotting() const
+std::vector<FamiliarIcon> Game::getAvailableFamiliarIconsForSlotting() const
 {
-	std::vector<std::string> names;
-	for (Familiar* f : getAvailableFamiliarsForSlotting())
-	{
-		int typeIndex = findFamiliarTypeIndex(f->getName(), f->getAge());
-		names.push_back(typeIndex >= 0 ? familiarTypeList[typeIndex].label : "Familiar");
-	}
-	return names;
+	std::vector<FamiliarIcon> icons;
+	for (Familiar* f : getAvailableFamiliarsForSlotting()) icons.push_back(buildFamiliarIcon(f));
+	return icons;
 }
 
 bool Game::isFamiliarInAnySlot(const Familiar* f) const
@@ -595,6 +721,14 @@ void Game::assignFamiliarToSlot(int slotIndex, int pickedIndex)
 void Game::unassignFamiliarSlot(int slotIndex)
 {
 	if (slotIndex < 0 || slotIndex >= static_cast<int>(familiarSlots.size())) return;
+
+	Familiar* removed = familiarSlots[slotIndex];
+	// Cuts off any status effect this familiar caused (e.g. Fire Dragon's Burn) the instant it
+	// leaves its slot, rather than letting it run out its own timer unattended - see the design
+	// decision behind Enemy::clearStatusEffectsFrom(). Generalized to whichever species this is,
+	// not just Fire, so a future lineage's own status-effect passive doesn't need to repeat this.
+	if (removed) enemySpawner->clearEnemyStatusEffectsFrom(familiarSaveName(removed->getName()));
+
 	familiarSlots[slotIndex] = nullptr; // the familiar itself is untouched (still unlocked, keeps its bonuses/evolution) - it just goes back to the available pool
 	repositionSlottedFamiliars();
 }
@@ -623,23 +757,52 @@ void Game::updateFamiliarFeatureGates()
 	// Achievements tab entirely until the player actually has a live Baby Fire Dragon to care
 	// about evolving, not just an unlocked-but-benched one. The isUnlocked() check up front is
 	// just to skip the (cheap, but pointless) repeat unlock() calls once this is already set.
+	// It's also the COMPLETION condition for the "Front Line Flame" achievement (same file) -
+	// that one's true once this familiar has been slotted at least once, same as this key.
 	if (!unlockManager->isUnlocked("BabyFireDragonActive") && familiar && familiar->isUnlocked() && isFamiliarInAnySlot(familiar))
 	{
 		unlockManager->unlock("BabyFireDragonActive");
 	}
 
+	// "FireDragonSlotEligible" is a separate, EARLIER moment than "BabyFireDragonActive" above -
+	// true once the player merely HAS a free slot and an unlocked Fire Dragon to put in it, not
+	// once they've actually done so. This is only the VISIBILITY gate (requiredFeature) on "Front
+	// Line Flame" - it reveals that achievement in the Achievements tab (as not-yet-completed) the
+	// moment it becomes possible, rather than it just appearing out of nowhere already claimable.
+	// markPending() fires once, exactly on the transition into true, so the Achievements tab button
+	// flashes to tell the player a new achievement just became available to go for.
+	if (!unlockManager->isUnlocked("FireDragonSlotEligible") && familiar && familiar->isUnlocked() && getFamiliarSlotCount() >= 1)
+	{
+		unlockManager->unlock("FireDragonSlotEligible");
+		if (achievementsTab) achievementsTab->markPending();
+	}
+
 	// Same two-step gating for Water and Wind - see the matching "Juvenile Tide"/"Juvenile Gale"
 	// achievements in AchievementManager.cpp and the onAchievementClaimed wiring in initUI().
+	// NOTE: add one more "XDragonActive" + "XDragonSlotEligible" pair here (and one more pair of
+	// achievements in AchievementManager.cpp) whenever a new lineage is added.
 	Familiar* water = ownedFamiliars[WaterDragon];
 	if (!unlockManager->isUnlocked("BabyWaterDragonActive") && water && water->isUnlocked() && isFamiliarInAnySlot(water))
 	{
 		unlockManager->unlock("BabyWaterDragonActive");
 	}
 
+	if (!unlockManager->isUnlocked("WaterDragonSlotEligible") && water && water->isUnlocked() && getFamiliarSlotCount() >= 1)
+	{
+		unlockManager->unlock("WaterDragonSlotEligible");
+		if (achievementsTab) achievementsTab->markPending();
+	}
+
 	Familiar* wind = ownedFamiliars[WindDragon];
 	if (!unlockManager->isUnlocked("BabyWindDragonActive") && wind && wind->isUnlocked() && isFamiliarInAnySlot(wind))
 	{
 		unlockManager->unlock("BabyWindDragonActive");
+	}
+
+	if (!unlockManager->isUnlocked("WindDragonSlotEligible") && wind && wind->isUnlocked() && getFamiliarSlotCount() >= 1)
+	{
+		unlockManager->unlock("WindDragonSlotEligible");
+		if (achievementsTab) achievementsTab->markPending();
 	}
 }
 
@@ -665,7 +828,7 @@ void Game::initUnlockManager()
 
 void Game::initLootDropManager()
 {
-	lootDropManager = new LootDropManager(hero, itemBar, itemManager);
+	lootDropManager = new LootDropManager(hero, hud, itemBar, itemManager);
 
 	// The reward is only actually granted here, once a drop's fly-to-target animation completes -
 	// see LootDropManager::update()/onGoldDropped()/onItemDropped().
@@ -706,19 +869,21 @@ void Game::onWindowResized(sf::Vector2u newSize)
 	enemySpawner->onResize();
 	itemBar->onResize();
 	tabbedPanel->onResize();
-	// the y origin value is currently fixed! If the Tab Panel Height can change, it should be adjusted here as well
-	debugTab->onResize({ windowSize.x - (tabPanelWidth), 40.0f }, { tabPanelWidth , windowSize.y });
 	hud->onResize();
 	ruler->onResize();
 }
 
 void Game::update()
 {
+	frameProfiler.begin();
+
 	pollEvents();
+	frameProfiler.mark("pollEvents");
 
 	times.nextDeltaTime();
 
 	float dt = times.getDeltaTime();
+	fpsCounter->update(dt); // kept outside the pause gate below, so it still reflects real rendering frame time while paused
 
 	if (hud->isPaused())
 	{
@@ -726,6 +891,7 @@ void Game::update()
 	}
 
 	runSimulationTick(dt);
+	frameProfiler.mark("runSimulationTick");
 }
 
 void Game::runSimulationTick(float dt)
@@ -733,47 +899,70 @@ void Game::runSimulationTick(float dt)
 	statistics->updatePlayTime(dt);
 	updateFamiliarFeatureGates(); // before achievementManager->update(), so a requiredFeature it flips on can be seen by an achievement's condition() this same frame
 	achievementManager->update(); // checks every frame if any achievements have been unlocked
+	frameProfiler.mark("achievements+gates");
 
-	stage->updateTexts();
 	stage->setStageNumber(enemySpawner->getCurrentStageNumber());
+	hud->setStageNumber(enemySpawner->getCurrentStageNumber());
 
 	if (enemySpawner->hasEnemy())
 	{
 		if (enemySpawner->getIsCurrentEnemyBoss())
 		{
-			stage->setEnemyInfoText("Boss: " + enemySpawner->getEnemyName());
+			hud->setEnemyInfoText("Boss: " + enemySpawner->getEnemyName());
 		}
 		else
 		{
-			stage->setEnemyInfoText(enemySpawner->getEnemyName() + " ("
+			hud->setEnemyInfoText("Enemy: " + enemySpawner->getEnemyName() + " ("
 				+ std::to_string(enemySpawner->getEnemyIndexInStage() + 1) + "/" + std::to_string(enemiesPerStage) + ")");
 		}
 	}
 	else
 	{
-		stage->setEnemyInfoText("");
+		hud->setEnemyInfoText("");
 	}
+	frameProfiler.mark("stageText");
 
 	enemySpawner->update(dt); // gold/item rewards are now granted asynchronously, once LootDropManager's drop animation reaches its HUD target (see initLootDropManager())
+	frameProfiler.mark("enemySpawner.update");
+
 	lootDropManager->update(dt);
+	frameProfiler.mark("lootDropManager.update");
 
 	for (Familiar* activeFamiliar : familiarSlots) // only SLOTTED familiars auto-attack/animate - an unlocked-but-unassigned familiar sits out of the play area entirely
 	{
 		if (!activeFamiliar) continue; // empty slot
 		activeFamiliar->update(dt, enemySpawner->getEnemyPosition()); // ticks cooldowns, auto-fires ready auto-attacks, advances in-flight projectiles
 	}
-	updateActiveFamiliarDPSText(); // combines every slotted familiar's own DPS into the one HUD line - must run after the loop above so each familiar's tracker is current for this frame
+	BigNumber activeFamiliarDPSTotal(0); // combines every slotted familiar's own DPS into the one HUD line - must run after the loop above so each familiar's tracker is current for this frame
+	for (Familiar* activeFamiliar : familiarSlots)
+	{
+		if (activeFamiliar) activeFamiliarDPSTotal = activeFamiliarDPSTotal + activeFamiliar->getFamiliarDPS();
+	}
+	hud->setActiveFamiliarDPS(activeFamiliarDPSTotal);
+	frameProfiler.mark("familiars.update");
+
 	updateFamiliarPassiveDamage(dt); // deals passive damage once per elapsed second, active as soon as a familiar is unlocked - independent of the slot loop above
+	frameProfiler.mark("passiveDamage");
 
 	hud->sync(familiarSlots);
 	hud->update();
+	frameProfiler.mark("hud");
+
 	hero->updateSprites(dt);
-	hero->updateCurrencyPulse(dt);
+	hud->updateCurrencyPulse(dt);
 	hero->updateDPS(dt);
 
-	updateHUDStatPanelLayout(); // must run after every stat text above (and the familiar/passive updates earlier) has refreshed for this frame, since it wraps their current bounds
+	if (unlockManager->isUnlocked("HeroAutoAttackUnlocked") && hero->tickAutoAttack(dt))
+	{
+		performHeroAttack();
+	}
+	frameProfiler.mark("hero");
+
+	bool anyFamiliarActive = std::any_of(familiarSlots.begin(), familiarSlots.end(), [](Familiar* f) { return f != nullptr; });
+	hud->updateStatPanel(familiar && familiar->isUnlocked(), anyFamiliarActive); // must run after every stat text above (and the familiar/passive updates earlier) has refreshed for this frame, since it wraps their current bounds
 
 	saveIndicator->update(dt);
+	frameProfiler.mark("hudStatPanel+saveIndicator");
 }
 
 void Game::stepFrameForward()
@@ -808,33 +997,39 @@ void Game::render()
 	if (enemySpawner->hasEnemy()) actors.push_back({ enemySpawner->getEnemyGroundY(), [this]() { enemySpawner->render(window); } });
 
 	std::vector<Stage::HudElement> hudElements;
-	hudElements.push_back({ [this]() { stage->drawHUD(window); } }); // stage name + current enemy/boss label - always on top, never occluded by a decoration
+	hudElements.push_back({ [this]() { hud->renderStageInfo(window); } }); // stage name + current enemy/boss label - always on top, never occluded by a decoration
 	// Drawn next so every stat-text element pushed after this paints on top of it - see the
-	// member comment on hudStatPanel in Game.h for why this backdrop exists.
-	hudElements.push_back({ [this]() { window->draw(hudStatPanel); } });
-	hudElements.push_back({ [this]() { hero->drawHUD(window); } });
-	if (familiar && familiar->isUnlocked()) // same gate as computeFamiliarPassiveDamagePerSecond()/updateHUDStatPanelLayout() - hidden until passive damage actually starts, not shown at "0" the whole game
+	// member comment on hudStatPanel in HUD.h for why this backdrop exists.
+	hudElements.push_back({ [this]() { hud->renderStatPanel(window); } });
+	hudElements.push_back({ [this]() { hud->renderHeroStats(window); } });
+	if (familiar && familiar->isUnlocked()) // same gate as computeFamiliarPassiveDamagePerSecond()/HUD::updateStatPanel()'s own call below - hidden until passive damage actually starts, not shown at "0" the whole game
 	{
-		hudElements.push_back({ [this]() { window->draw(*passiveFamiliarDPSText); } });
+		hudElements.push_back({ [this]() { hud->renderPassiveFamiliarDPS(window); } });
 	}
 	for (Familiar* activeFamiliar : familiarSlots)
 	{
 		if (!activeFamiliar) continue;
 		hudElements.push_back({ [activeFamiliar, this]() { activeFamiliar->drawHUD(window); } });
-		hudElements.push_back({ [this]() { hud->render(window); } });
 	}
+	hudElements.push_back({ [this]() { hud->render(window); } }); // manual attack buttons + pause overlay - was pushed once per slotted familiar before (harmless duplicate draw), moved outside the loop
 	bool anyFamiliarActive = std::any_of(familiarSlots.begin(), familiarSlots.end(), [](Familiar* f) { return f != nullptr; });
 	if (anyFamiliarActive) // one combined "Familiar DPS" line for every slotted familiar, instead of each one drawing its own overlapping text
 	{
-		hudElements.push_back({ [this]() { window->draw(*activeFamiliarDPSText); } });
+		hudElements.push_back({ [this]() { hud->renderActiveFamiliarDPS(window); } });
 	}
 	if (enemySpawner->hasEnemy()) hudElements.push_back({ [this]() { enemySpawner->drawHUD(window); } }); // health bar, boss timer, floating damage numbers - always on top, never occluded by a decoration
+	frameProfiler.mark("render-setup");
 
 	stage->drawMap(window, actors, hudElements);
+	frameProfiler.mark("stage.drawMap");
+
 	itemBar->render(window);
 	lootDropManager->render(window); // drawn after itemBar so a flying item stays visible on top of the bar all the way to its slot, instead of disappearing behind the icon
 	tabbedPanel->render(window);
+	familiarTab->renderPicker(window); // the familiar picker popup, if open - drawn here (not inside FamiliarTab's own render()) so it reaches the whole window, including the play area and item bar above, instead of being scissor-clipped to the tab panel's own width - see FamiliarTab::renderPicker()'s own comment
 	saveIndicator->render(window); // last of all, on top of the UI panel too
+	frameProfiler.mark("itemBar+loot+tabbedPanel+saveIndicator");
+
 	if (ruler->isVisible())
 	{
 		ruler->render(window);
@@ -845,7 +1040,15 @@ void Game::render()
 		}
 	}
 
+	if (fpsCounter->isVisible())
+	{
+		fpsCounter->render(window);
+	}
+
 	window->display();
+	frameProfiler.mark("display"); // includes any vsync/driver wait - if THIS is the slow lap, it's not our simulation code
+
+	frameProfiler.end(0.033f); // ~30 FPS - logs a breakdown whenever a frame runs noticeably slower than that
 }
 
 void Game::refreshLayoutAfterWindowChange()
@@ -866,7 +1069,8 @@ void Game::refreshLayoutAfterWindowChange()
 	itemBar->onResize();
 	tabbedPanel->onResize();
 	saveIndicator->onResize();
-	updateHUDStatPanelLayout(); // repositions all the anchored texts above changed gameAreaWidth/windowSize, so their bounds moved too - recompute the panel wrapping them (also recomputed every frame from update(), this just avoids one stale frame right after a resize)
+	bool anyFamiliarActiveNow = std::any_of(familiarSlots.begin(), familiarSlots.end(), [](Familiar* f) { return f != nullptr; });
+	hud->updateStatPanel(familiar && familiar->isUnlocked(), anyFamiliarActiveNow); // repositions all the anchored texts above changed gameAreaWidth/windowSize, so their bounds moved too - recompute the panel wrapping them (also recomputed every frame from update(), this just avoids one stale frame right after a resize)
 }
 
 void Game::applyWindowSettings()
@@ -905,17 +1109,32 @@ Game::Game()
 
 	initFamiliars(); // builds one locked Familiar per species (Fire/Water/Wind) - see Game.h's ownedFamiliars comment
 	passiveFamiliarDPSTracker.setWindowDuration(passiveDamageTickInterval); // keep the DPS window matched to the tick interval - see the member comment in Game.h
-	initHUDStatPanel();
-	initPassiveFamiliarDPSText();
-	initActiveFamiliarDPSText();
 	initStatistics();
 	initItemManager(); // needs to be called before initEnemySpawner()/initUI()
 	initUnlockManager(); // before initAchievements()
 	initAchievements(); // needs to be called before initEnemySpawner() and after initHero() and initStatistics()
 	initEnemySpawner();
-	initUI();
+	initUI(); // constructs hud, which creates its own stat-panel/hero-stat/DPS-text widgets
+
+	// Hero no longer touches any Text itself - it just reports when currency/attack power/DPS
+	// change, and HUD is the one that knows how to display that. Same callback pattern as
+	// OptionsTab::onTabTextSizeChanged. Wired once here, then seeded with Hero's actual starting
+	// values below (HUD's own constructor only seeds harmless placeholders).
+	hero->onCurrencyChanged = [this](const BigNumber& currency, bool triggerPulse)
+		{
+			hud->setCurrency(currency);
+			if (triggerPulse) hud->triggerCurrencyPulse();
+		};
+	hero->onAttackPowerChanged = [this](const BigNumber& attackPower) { hud->setClickDamage(attackPower); };
+	hero->onDPSChanged = [this](const BigNumber& dps) { hud->setHeroDPS(dps); };
+
+	hud->setCurrency(hero->getCurrency());
+	hud->setClickDamage(hero->getAttackPower());
+	hud->setHeroDPS(hero->getHeroDPS());
+	hud->updateStatPanel(false, false);
 	initSaveIndicator();
 	ruler = new Ruler();
+	fpsCounter = new FpsCounter();
 
 	enemySpawner->setOnBossEncounterEndedCallback([this](bool wasDefeated)
 		{
@@ -937,6 +1156,7 @@ Game::Game()
 		});
 
 	loadFromFile(saveFilePath); // Auto-load on startup, if a save file exists
+	tabbedPanel->resyncVisibilityAfterLoad(); // tabs were added (addTab()) before this load - reset their "was visible" baseline now that the save's unlocks are actually in, so restoring a PAST unlock doesn't look like a fresh one and blink
 }
 
 Game::~Game()
@@ -952,12 +1172,12 @@ Game::~Game()
 	delete lootDropManager;
 	delete saveIndicator;
 	for (Familiar* f : ownedFamiliars) delete f; // deletes Fire/Water/Wind - `familiar` is just an alias into this same array, not deleted separately
+	delete fireBurnVisualTexture;
 	delete unlockManager;
-	delete passiveFamiliarDPSText;
-	delete activeFamiliarDPSText;
 	delete hud;
 	delete frameStepHistory;
 	delete ruler;
+	delete fpsCounter;
 }
 
 void Game::running()
@@ -1056,6 +1276,16 @@ void Game::debugResetShopPrices()
 	shopTab->resetPricesToDefault();
 }
 
+void Game::debugSetFrameProfilerLoggingEnabled(bool enabled)
+{
+	frameProfiler.setLoggingEnabled(enabled);
+}
+
+bool Game::debugIsFrameProfilerLoggingEnabled() const
+{
+	return frameProfiler.isLoggingEnabled();
+}
+
 std::string Game::trim(const std::string& str)
 {
 	const char* toTrim = " \t\r\n";
@@ -1104,6 +1334,7 @@ void Game::saveToFile(const std::string& path)
 			ofs << "windowPosY=" << windowPos.y << '\n';
 		}
 		ofs << "deathAnimationsEnabled=" << (deathAnimationsEnabled ? true : false) << '\n';
+		ofs << "tabBodyTextSize=" << tabBodyTextSize << '\n';
 		ofs << "stageNumber=" << stage->getStageNumber() << '\n';
 
 		// Hero
@@ -1114,6 +1345,7 @@ void Game::saveToFile(const std::string& path)
 		ofs << "critUnlocked=" << (hero->isCritUnlocked() ? 1 : 0) << '\n';
 		ofs << "critChance=" << hero->getCritChance() << '\n';
 		ofs << "critDamageMultiplier=" << hero->getCritDamageMultiplier() << '\n';
+		ofs << "autoAttackActive=" << (hero->isAutoAttackActive() ? 1 : 0) << '\n';
 
 		// Familiars - one [Familiar:X] section per species (X = "FireDragon"/"WaterDragon"/...,
 		// see familiarSaveName()), identical fields in each. No "name=" field is needed - the
@@ -1136,6 +1368,9 @@ void Game::saveToFile(const std::string& path)
 				ofs << "bonusElementalPower" << e << "=" << f->getBonusElementalPower(static_cast<Elements>(e)).toApproxDouble() << '\n';
 			}
 			ofs << "bonusCooldownReduction=" << f->getBonusCooldownReduction() << '\n';
+			ofs << "cumulativeElementalDamage=" << f->getCumulativeElementalDamage().toApproxDouble() << '\n';
+			ofs << "cumulativePhysicalDamage=" << f->getCumulativePhysicalDamage().toApproxDouble() << '\n';
+			ofs << "cumulativePassiveDamage=" << f->getCumulativePassiveDamage().toApproxDouble() << '\n';
 		}
 
 		// Familiar slots - separate from [Familiar:X] above, since this is about WHERE a familiar
@@ -1175,6 +1410,14 @@ void Game::saveToFile(const std::string& path)
 		for (const auto& key : unlockManager->getUnlockedFeatures())
 		{
 			ofs << "feature=" << key << '\n';
+		}
+		// Which familiars were unlocked, in the order it actually happened - this is what the
+		// unlock-cost ladder and each familiar's elemental-damage achievement threshold are both
+		// derived from (see UnlockManager.h), so the order itself has to survive a save/load, not
+		// just each familiar's own unlocked flag.
+		for (const auto& familiarKey : unlockManager->getFamiliarUnlockOrder())
+		{
+			ofs << "familiarOrder=" << familiarKey << '\n';
 		}
 
 		// Items (store counts if possible)
@@ -1264,6 +1507,7 @@ void Game::loadFromFile(const std::string& path)
 		int fileWindowPosX = 0;
 		int fileWindowPosY = 0;
 		bool fileDeathAnimationsEnabled = deathAnimationsEnabled;
+		int fileTabBodyTextSize = tabBodyTextSize;
 		int fileStageNumber = stage->getStageNumber();
 
 		double heroCurrency = 0.0;
@@ -1272,6 +1516,7 @@ void Game::loadFromFile(const std::string& path)
 		bool heroCritUnlocked = false;
 		double heroCritChance = 0.0;
 		double heroCritDmgMult = 1.5;
+		bool heroAutoAttackActive = false;
 
 		// Defaults to current values, so an older save (or one missing a species' section
 		// entirely) leaves that species untouched - same "absent data changes nothing" idea the
@@ -1285,6 +1530,9 @@ void Game::loadFromFile(const std::string& path)
 			double bonusPhysicalPower = 0.0;
 			std::array<double, ElementCount> bonusElementalPower{};
 			float bonusCooldownReduction = 0.0f;
+			double cumulativeElementalDamage = 0.0;
+			double cumulativePhysicalDamage = 0.0;
+			double cumulativePassiveDamage = 0.0;
 		};
 		std::array<SavedFamiliarData, static_cast<size_t>(FamiliarNameCount)> savedFamiliars;
 		for (size_t i = 0; i < ownedFamiliars.size(); i++)
@@ -1300,6 +1548,9 @@ void Game::loadFromFile(const std::string& path)
 				savedFamiliars[i].bonusElementalPower[e] = f->getBonusElementalPower(static_cast<Elements>(e)).toApproxDouble();
 			}
 			savedFamiliars[i].bonusCooldownReduction = f->getBonusCooldownReduction();
+			savedFamiliars[i].cumulativeElementalDamage = f->getCumulativeElementalDamage().toApproxDouble();
+			savedFamiliars[i].cumulativePhysicalDamage = f->getCumulativePhysicalDamage().toApproxDouble();
+			savedFamiliars[i].cumulativePassiveDamage = f->getCumulativePassiveDamage().toApproxDouble();
 		}
 
 		// Defaults to empty (0 slots), so older save files without a [FamiliarSlots] section
@@ -1328,6 +1579,7 @@ void Game::loadFromFile(const std::string& path)
 
 		// Unlocks
 		std::vector<std::string> unlockedFeaturesSaved;
+		std::vector<std::string> familiarUnlockOrderSaved; // see the restore block below for the pre-existing-save fallback
 
 		// Defaults to current values, so older save files without a [Shop] section leave prices untouched
 		double shopAttackUpgradeCost = shopTab->getAttackUpgradeCost().toApproxDouble();
@@ -1373,6 +1625,7 @@ void Game::loadFromFile(const std::string& path)
 				else if (key == "windowPosX") { fileWindowPosX = std::stoi(value); fileHasWindowPosX = true; }
 				else if (key == "windowPosY") { fileWindowPosY = std::stoi(value); fileHasWindowPosY = true; }
 				else if (key == "deathAnimationsEnabled") fileDeathAnimationsEnabled = (std::stoi(value) != false);
+				else if (key == "tabBodyTextSize") fileTabBodyTextSize = std::stoi(value);
 				else if (key == "stageNumber") fileStageNumber = std::stoi(value);
 			}
 			else if (section == "Hero")
@@ -1383,6 +1636,7 @@ void Game::loadFromFile(const std::string& path)
 				else if (key == "critUnlocked") heroCritUnlocked = (std::stoi(value) != 0);
 				else if (key == "critChance") heroCritChance = std::stod(value);
 				else if (key == "critDamageMultiplier") heroCritDmgMult = std::stod(value);
+				else if (key == "autoAttackActive") heroAutoAttackActive = (std::stoi(value) != 0);
 			}
 			else if (section.rfind("Familiar:", 0) == 0) // e.g. "Familiar:FireDragon", "Familiar:WaterDragon", "Familiar:WindDragon"
 			{
@@ -1394,6 +1648,9 @@ void Game::loadFromFile(const std::string& path)
 					else if (key == "age") saved.age = static_cast<Age>(std::stoi(value));
 					else if (key == "bonusPhysicalPower") saved.bonusPhysicalPower = std::stod(value);
 					else if (key == "bonusCooldownReduction") saved.bonusCooldownReduction = std::stof(value);
+					else if (key == "cumulativeElementalDamage") saved.cumulativeElementalDamage = std::stod(value);
+					else if (key == "cumulativePhysicalDamage") saved.cumulativePhysicalDamage = std::stod(value);
+					else if (key == "cumulativePassiveDamage") saved.cumulativePassiveDamage = std::stod(value);
 					else if (key.rfind("bonusElementalPower", 0) == 0) // e.g. "bonusElementalPower0", "bonusElementalPower1", ...
 					{
 						int elementIndex = std::stoi(key.substr(std::string("bonusElementalPower").size()));
@@ -1447,6 +1704,7 @@ void Game::loadFromFile(const std::string& path)
 			else if (section == "Unlocks")
 			{
 				if (key == "feature") unlockedFeaturesSaved.push_back(value);
+				else if (key == "familiarOrder") familiarUnlockOrderSaved.push_back(value);
 			}
 			else if (section == "Items")
 			{
@@ -1508,9 +1766,13 @@ void Game::loadFromFile(const std::string& path)
 		}
 
 		setDeathAnimationsEnabled(fileDeathAnimationsEnabled);
+		tabBodyTextSize = std::clamp(fileTabBodyTextSize, tabBodyTextSizeMin, tabBodyTextSizeMax);
+		if (optionsTab) optionsTab->refreshLabels(); // picks up the loaded size in the Options tab's own button label
+		tabbedPanel->onResize(); // and in AchievementsTab/StatisticsTab, even if neither is the active+scrolled tab right now (see OptionsTab::onTabTextSizeChanged's own comment)
 
 		// Stage
 		stage->setStageNumber(fileStageNumber);
+		hud->setStageNumber(fileStageNumber); // so the label doesn't flash the pre-load number for one frame
 		enemySpawner->setCurrentStageNumber(fileStageNumber); // without this, update() overwrites stage->setStageNumber() next frame
 		statistics->setHighestStageReached(highestStageReached);
 
@@ -1564,6 +1826,9 @@ void Game::loadFromFile(const std::string& path)
 				hero->increaseCritDamage(heroCritDmgMult - hero->getCritDamageMultiplier());
 		}
 
+		// Hero: auto-attack on/off state
+		hero->setAutoAttackActive(heroAutoAttackActive);
+
 		// Familiars: restore each species' unlock/bonus-stat/evolution state in place. Every
 		// ownedFamiliars[i] was already constructed back in Game() (so ShopTab/FamiliarTab/
 		// AchievementManager/its callbacks could all be wired to it) - so if the save says it
@@ -1597,6 +1862,9 @@ void Game::loadFromFile(const std::string& path)
 					f->setBonusElementalPower(static_cast<Elements>(e), BigNumber(saved.bonusElementalPower[e]));
 				}
 				f->setBonusCooldownReduction(saved.bonusCooldownReduction);
+				f->setCumulativeElementalDamage(BigNumber(saved.cumulativeElementalDamage));
+				f->setCumulativePhysicalDamage(BigNumber(saved.cumulativePhysicalDamage));
+				f->setCumulativePassiveDamage(BigNumber(saved.cumulativePassiveDamage));
 			}
 
 			if (f->getAge() != saved.age)
@@ -1673,6 +1941,24 @@ void Game::loadFromFile(const std::string& path)
 		{
 			unlockManager->restoreUnlocked(featureKey);
 		}
+
+		// Familiar unlock order - a save written before this ladder existed has no "familiarOrder="
+		// lines at all, even though it may already have familiars marked unlocked (see the
+		// per-familiar restore loop above). Rather than leave UnlockManager's ladder contradicting
+		// what's already unlocked on screen, seed it from savedFamiliars' own unlocked flags, in
+		// species-declaration order, exactly once, as a one-time migration for exactly that case.
+		if (familiarUnlockOrderSaved.empty())
+		{
+			for (size_t i = 0; i < ownedFamiliars.size(); i++)
+			{
+				if (savedFamiliars[i].unlocked) familiarUnlockOrderSaved.push_back(familiarSaveName(static_cast<FamiliarName>(i)));
+			}
+		}
+		for (const auto& familiarKey : familiarUnlockOrderSaved)
+		{
+			unlockManager->restoreFamiliarUnlockOrder(familiarKey);
+		}
+		if (familiarTab) familiarTab->refreshUnlockButtonLabels(); // the still-locked unlock buttons' displayed prices depend on the order just restored above
 
 		// Achievements
 		for (const auto& saved : achievementsSaved)

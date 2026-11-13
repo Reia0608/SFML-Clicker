@@ -20,4 +20,7 @@ class IDebugController
 		virtual void debugResetHeroStats() = 0;
 		virtual void debugResetItems() = 0;
 		virtual void debugResetShopPrices() = 0;
+
+		virtual void debugSetFrameProfilerLoggingEnabled(bool enabled) = 0; // toggles FrameProfiler's stdout breakdown - see DebugTab's own toggle button
+		virtual bool debugIsFrameProfilerLoggingEnabled() const = 0;
 };

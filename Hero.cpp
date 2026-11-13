@@ -1,83 +1,17 @@
 #include "Hero.h"
 #include "PublicVariables.h"
-#include "LayoutManager.h"
 #include "Randomize.h"
-#include <cmath>
-#include <algorithm>
-
-void Hero::initCurrencyText()
-{
-	currencyText = new Text(currency.toString(), "Fonts/arial.ttf");
-	currencyText->setFillColor(sf::Color::Yellow);
-	currencyText->setFillColor(sf::Color::Yellow);
-	currencyText->setOutlineColor(sf::Color::Black);
-	currencyText->setOutlineThickness(2.0f);
-	updateCurrencyText();
-}
-
-void Hero::updateCurrencyText()
-{
-	currencyText->setString("Gold: " + currency.toString());
-	LayoutManager::applyAnchor(*currencyText, Anchor::BottomRight, { -10.0f, -10.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
-
-void Hero::triggerCurrencyPulse()
-{
-	currencyPulseElapsed = 0.0f;
-	currencyPulseActive = true;
-}
-
-void Hero::initClickDamageText()
-{
-	clickDamageText = new Text("click damage: " + attackPower.toString(), "Fonts/arial.ttf");
-	clickDamageText->setFillColor(sf::Color::Red);
-	clickDamageText->setOutlineColor(sf::Color::Black);
-	clickDamageText->setOutlineThickness(2.0f);
-	updateClickDamageText();
-}
-
-void Hero::initDPSText()
-{
-	dpsText = new Text("DPS: 0", "Fonts/arial.ttf");
-	// Pale gold/ivory - source-identity color for "damage dealt by the Hero", deliberately
-	// desaturated so it reads as a stat readout rather than an elemental effect color (see the
-	// matching colors on Game::activeFamiliarDPSText and Game::dpsText - this is one of three).
-	// clickDamageText below stays pure Red on purpose - it's not part of this scheme, it just
-	// shows current attack power and already matches the Enemy's Red/Orange floating hit numbers.
-	dpsText->setFillColor(sf::Color(255, 235, 200));
-	dpsText->setOutlineColor(sf::Color::Black);
-	dpsText->setOutlineThickness(2.0f);
-	updateDPSText();
-}
-
-void Hero::updateDPSText()
-{
-	dpsText->setString("DPS: " + heroDPSTracker.getDPS().toString());
-	LayoutManager::applyAnchor(*dpsText, Anchor::BottomRight, { -10.0f, -50.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
-
-void Hero::updateClickDamageText()
-{
-	clickDamageText->setString("Click Damage: " + attackPower.toString());
-	LayoutManager::applyAnchor(*clickDamageText, Anchor::BottomRight, { -10.0f, -80.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
 
 Hero::Hero()
 {
 	attackPower = BigNumber(2); // Initial attack power
 
 	initSprites();
-	initCurrencyText();
-	initDPSText();
-	initClickDamageText();
 }
 
 Hero::~Hero()
 {
 	delete sprites;
-	delete currencyText;
-	delete dpsText;
-	delete clickDamageText;
 }
 
 void Hero::initSprites()
@@ -96,8 +30,7 @@ void Hero::gainCurrency(BigNumber amount)
 {
 	BigNumber multipliedAmount = amount * BigNumber(goldMultiplier);
 	currency = currency + multipliedAmount;
-	updateCurrencyText();
-	triggerCurrencyPulse();
+	if (onCurrencyChanged) onCurrencyChanged(currency, true);
 }
 
 void Hero::recordDamageDealt(BigNumber amount)
@@ -116,49 +49,20 @@ void Hero::updateSprites(float dt)
 	this->sprites->animate(dt);
 }
 
-void Hero::updateCurrencyPulse(float dt)
-{
-	if (!currencyPulseActive) return;
-
-	currencyPulseElapsed += dt;
-	float t = currencyPulseElapsed / currencyPulseDuration;
-
-	if (t >= 1.0f)
-	{
-		currencyText->setScale({ 1.0f, 1.0f });
-		currencyPulseActive = false;
-		return;
-	}
-
-	const float pi = 3.14159265f;
-	float scale = 1.0f + (currencyPulseMaxScale - 1.0f) * std::sin(t * pi);
-	currencyText->setScale({ scale, scale });
-}
-
 void Hero::onResize()
 {
 	sprites->setPosition({ gameAreaWidth / 2.0f, (windowSize.y / 3.0f) * 2.0f });
-	updateCurrencyText();
-	updateDPSText();
-	updateClickDamageText();
 }
 
 void Hero::updateDPS(float dt)
 {
 	heroDPSTracker.update(dt);
-	updateDPSText();
+	if (onDPSChanged) onDPSChanged(heroDPSTracker.getDPS());
 }
 
 void Hero::draw(sf::RenderWindow* window)
 {
 	window->draw(*sprites);
-}
-
-void Hero::drawHUD(sf::RenderWindow* window)
-{
-	window->draw(*currencyText);
-	window->draw(*dpsText);
-	window->draw(*clickDamageText);
 }
 
 void Hero::playAttack1Animation()
@@ -196,7 +100,7 @@ bool Hero::trySpendCurrency(BigNumber amount)
 	if (currency >= amount)
 	{
 		currency = currency - amount;
-		updateCurrencyText();
+		if (onCurrencyChanged) onCurrencyChanged(currency, false);
 		return true;
 	}
 	return false;
@@ -205,6 +109,7 @@ bool Hero::trySpendCurrency(BigNumber amount)
 void Hero::increaseAttackPower(BigNumber amount)
 {
 	attackPower = attackPower + amount;
+	if (onAttackPowerChanged) onAttackPowerChanged(attackPower);
 }
 
 void Hero::setGoldMultiplier(double value)
@@ -263,14 +168,14 @@ void Hero::increaseCritDamage(double amount)
 	critDamageMultiplier += amount;
 }
 
-BigNumber Hero::rollDamage(bool& outWasCritical)
+BigNumber Hero::rollDamage(bool& outWasCritical, double externalCritChanceBonus, double externalCritDamageBonus)
 {
 	outWasCritical = false;
 
 	if (critUnlocked)
 	{
 		float roll = Randomize::returnRandomizeFloat(0.0f, 1.0f);
-		if (roll <= static_cast<float>(critChance))
+		if (roll <= static_cast<float>(critChance + externalCritChanceBonus))
 		{
 			outWasCritical = true;
 		}
@@ -278,7 +183,7 @@ BigNumber Hero::rollDamage(bool& outWasCritical)
 
 	if (outWasCritical)
 	{
-		return attackPower * BigNumber(critDamageMultiplier);
+		return attackPower * BigNumber(critDamageMultiplier + externalCritDamageBonus);
 	}
 	return attackPower;
 }
@@ -286,8 +191,37 @@ BigNumber Hero::rollDamage(bool& outWasCritical)
 void Hero::grantBonusGold(BigNumber amount)
 {
 	currency = currency + amount;
-	updateCurrencyText();
-	triggerCurrencyPulse();
+	if (onCurrencyChanged) onCurrencyChanged(currency, true);
+}
+
+bool Hero::isAutoAttackActive() const
+{
+	return autoAttack.isActive();
+}
+
+void Hero::setAutoAttackActive(bool active)
+{
+	autoAttack.setActive(active);
+}
+
+void Hero::toggleAutoAttack()
+{
+	autoAttack.toggleActive();
+}
+
+bool Hero::tickAutoAttack(float dt)
+{
+	return autoAttack.update(dt);
+}
+
+float Hero::getAutoAttackInterval() const
+{
+	return autoAttack.getInterval();
+}
+
+void Hero::setAutoAttackInterval(float seconds)
+{
+	autoAttack.setInterval(seconds);
 }
 
 void Hero::setAttackPower(BigNumber value)
@@ -298,7 +232,7 @@ void Hero::setAttackPower(BigNumber value)
 void Hero::setCurrency(BigNumber value)
 {
 	currency = value;
-	updateCurrencyText();
+	if (onCurrencyChanged) onCurrencyChanged(currency, false);
 }
 
 void Hero::setCritChance(double value)
@@ -323,7 +257,8 @@ void Hero::resetToDefaults() // mirrors the member initializers in Hero.h / the 
 	critUnlocked = false;
 	critChance = 0.0;
 	critDamageMultiplier = 1.5;
-	updateCurrencyText();
+	autoAttack.setActive(false); // same spirit as critUnlocked above - resets this Hero's OWN on/off state, not whether UnlockManager's "HeroAutoAttackUnlocked" key is set
+	if (onCurrencyChanged) onCurrencyChanged(currency, false); // NOTE: does NOT fire onAttackPowerChanged even though attackPower resets too - pre-existing gap, matches setAttackPower()'s comment above (flagged, not fixed)
 }
 
 Hero::State Hero::captureState() const
@@ -331,8 +266,6 @@ Hero::State Hero::captureState() const
 	State state;
 	state.attackPower = attackPower;
 	state.currency = currency;
-	state.currencyPulseElapsed = currencyPulseElapsed;
-	state.currencyPulseActive = currencyPulseActive;
 	state.goldMultiplier = goldMultiplier;
 	state.critUnlocked = critUnlocked;
 	state.critChance = critChance;
@@ -340,6 +273,7 @@ Hero::State Hero::captureState() const
 	state.hasAttack1played = hasAttack1played;
 	state.hasAttack2played = hasAttack2played;
 	state.dpsTrackerState = heroDPSTracker.captureState();
+	state.autoAttackState = autoAttack.captureState();
 	state.spritesState = sprites->captureState();
 	return state;
 }
@@ -348,8 +282,6 @@ void Hero::restoreState(const State& state)
 {
 	attackPower = state.attackPower;
 	currency = state.currency;
-	currencyPulseElapsed = state.currencyPulseElapsed;
-	currencyPulseActive = state.currencyPulseActive;
 	goldMultiplier = state.goldMultiplier;
 	critUnlocked = state.critUnlocked;
 	critChance = state.critChance;
@@ -357,23 +289,10 @@ void Hero::restoreState(const State& state)
 	hasAttack1played = state.hasAttack1played;
 	hasAttack2played = state.hasAttack2played;
 	heroDPSTracker.restoreState(state.dpsTrackerState);
+	autoAttack.restoreState(state.autoAttackState);
 	sprites->restoreState(state.spritesState);
 
-	updateCurrencyText();
-	updateDPSText();
-	updateClickDamageText();
-}
-
-sf::FloatRect Hero::getStatsBounds() const
-{
-	sf::FloatRect currencyBounds = currencyText->getGlobalBounds();
-	sf::FloatRect dpsBounds = dpsText->getGlobalBounds();
-	sf::FloatRect clickBounds = clickDamageText->getGlobalBounds();
-
-	float left = std::min({ currencyBounds.position.x, dpsBounds.position.x, clickBounds.position.x });
-	float top = std::min({ currencyBounds.position.y, dpsBounds.position.y, clickBounds.position.y });
-	float right = std::max({ currencyBounds.position.x + currencyBounds.size.x, dpsBounds.position.x + dpsBounds.size.x, clickBounds.position.x + clickBounds.size.x });
-	float bottom = std::max({ currencyBounds.position.y + currencyBounds.size.y, dpsBounds.position.y + dpsBounds.size.y, clickBounds.position.y + clickBounds.size.y });
-
-	return sf::FloatRect({ left, top }, { right - left, bottom - top });
+	if (onCurrencyChanged) onCurrencyChanged(currency, false);
+	if (onAttackPowerChanged) onAttackPowerChanged(attackPower);
+	if (onDPSChanged) onDPSChanged(heroDPSTracker.getDPS());
 }
