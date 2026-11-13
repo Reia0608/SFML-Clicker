@@ -33,6 +33,7 @@ class DebugTab : public TabContent
 		UIButton* resetPrices;
 		UIButton* addAllItems;
 		UIButton* removeAllItems;
+		UIButton* frameProfilerLoggingButton; // toggles FrameProfiler's stdout breakdown - see IDebugController::debugSetFrameProfilerLoggingEnabled
 
 		BigNumber attackDamageValue = BigNumber(1);
 		BigNumber goldValue = BigNumber(10);
@@ -52,6 +53,8 @@ class DebugTab : public TabContent
 		void onResetPricesClicked();
 		void onAddAllItemsClicked();
 		void onRemoveAllItemsClicked();
+		void onToggleFrameProfilerLoggingClicked();
+		void updateFrameProfilerLoggingLabel();
 
 	public:
 		DebugTab(IDebugController* debugController);

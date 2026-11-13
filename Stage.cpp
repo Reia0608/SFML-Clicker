@@ -1,35 +1,12 @@
 #include "Stage.h"
 #include "Game.h"
 #include "PublicVariables.h"
-#include "LayoutManager.h"
 #include <algorithm>
 #include <random>
 
 void Stage::initStageNumber()
 {
 	stageNumber = 1;
-}
-
-void Stage::initStageText()
-{
-	stageText = new Text("Stage: " + std::to_string(stageNumber), "Fonts/arial.ttf");
-	stageText->setCharacterSize(24);
-	stageText->setFillColor(sf::Color::White);
-	stageText->setOutlineColor(sf::Color::Black);
-	stageText->setOutlineThickness(1.0f);
-	stageText->setPosition({ (windowSize.x - uiPanelWidth) / 2.0f, 20.0f });
-	this->updateStageText();
-}
-
-void Stage::initEnemyInfoText()
-{
-	enemyInfoText = new Text("", "Fonts/arial.ttf");
-	enemyInfoText->setCharacterSize(18);
-	enemyInfoText->setFillColor(sf::Color::White);
-	enemyInfoText->setOutlineColor(sf::Color::Black);
-	enemyInfoText->setOutlineThickness(1.0f);
-	enemyInfoText->setPosition({ (windowSize.x - uiPanelWidth) / 2.0f, 50.0f });
-	this->setEnemyInfoText("");
 }
 
 void Stage::initMapSize()
@@ -332,24 +309,9 @@ void Stage::rebuildTileGrid()
 	}
 }
 
-void Stage::updateStageText()
-{
-	stageText->setString("Stage: " + std::to_string(stageNumber));
-
-	LayoutManager::applyAnchor(*stageText, Anchor::TopCenter, { 0.0f, 20.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
-
-void Stage::setEnemyInfoText(const std::string& text)
-{
-	enemyInfoText->setString(text);
-	LayoutManager::applyAnchor(*enemyInfoText, Anchor::TopCenter, { 0.0f, 50.0f }, { 0.0f, 0.0f }, { gameAreaWidth, windowSize.y });
-}
-
 Stage::Stage()
 {
 	this->initStageNumber();
-	this->initStageText();
-	this->initEnemyInfoText();
 	this->initMapSize();
 	this->initTileMap();
 }
@@ -364,8 +326,6 @@ Stage::~Stage()
 	{
 		if (tex) delete tex;
 	}
-	delete stageText;
-	delete enemyInfoText;
 }
 
 int Stage::getStageNumber() const
@@ -386,7 +346,6 @@ int Stage::getMapSizeY()
 void Stage::setStageNumber(int newStageNumber)
 {
 	stageNumber = newStageNumber;
-	this->updateStageText();
 }
 
 void Stage::onResize()
@@ -465,22 +424,11 @@ void Stage::drawMap(sf::RenderWindow* window, const std::vector<DepthActor>& act
 	}
 
 	// HUD layer, drawn last so nothing from the world layers above can ever cover it. The stage
-	// name/enemy label used to be drawn right here too - they now come in through hudElements
-	// (see Stage::drawHUD and Game::render), alongside the enemy health bar/boss timer/damage
-	// numbers, so a foreground decoration can never occlude any of them anymore.
+	// name/enemy label used to live here too - they're now owned by HUD and come in through
+	// hudElements (see HUD::renderStageInfo and Game::render), alongside the enemy health bar/
+	// boss timer/damage numbers, so a foreground decoration can never occlude any of them anymore.
 	for (const auto& hud : hudElements)
 	{
 		hud.draw();
 	}
-}
-
-void Stage::drawHUD(sf::RenderWindow* window)
-{
-	window->draw(*stageText);
-	window->draw(*enemyInfoText);
-}
-
-void Stage::updateTexts()
-{
-	this->updateStageText();
 }

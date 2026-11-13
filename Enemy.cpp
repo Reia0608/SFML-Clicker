@@ -5,6 +5,7 @@
 #include "PublicVariables.h"
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 void Enemy::initHealth(BigNumber maxHealth)
 {
@@ -278,6 +279,128 @@ void Enemy::drawDamageText(sf::RenderWindow* window)
 	}
 };
 
+void Enemy::applyStatusEffect(const std::string& type, const std::string& sourceKey, float duration, bool permanent, float tickInterval, std::function<void()> onTick,
+	ElementMask damageMultiplierMask, double damageMultiplier, bool forceNeutralAffinity)
+{
+	for (auto& effect : activeStatusEffects)
+	{
+		if (effect.type == type)
+		{
+			// Refresh in place - same effect, new timer/source/tick - never a second entry of the
+			// same type (see the class comment on ActiveStatusEffect in Enemy.h).
+			effect.sourceKey = sourceKey;
+			effect.permanent = permanent;
+			effect.remainingDuration = duration;
+			effect.tickInterval = tickInterval;
+			effect.tickCountdown = tickInterval; // first tick of the refreshed effect is a full interval away, same as a brand new one
+			effect.onTick = std::move(onTick);
+			effect.damageMultiplierMask = damageMultiplierMask;
+			effect.damageMultiplier = damageMultiplier;
+			effect.forceNeutralAffinity = forceNeutralAffinity;
+			return;
+		}
+	}
+
+	ActiveStatusEffect effect;
+	effect.type = type;
+	effect.sourceKey = sourceKey;
+	effect.permanent = permanent;
+	effect.remainingDuration = duration;
+	effect.tickInterval = tickInterval;
+	effect.tickCountdown = tickInterval;
+	effect.onTick = std::move(onTick);
+	effect.damageMultiplierMask = damageMultiplierMask;
+	effect.damageMultiplier = damageMultiplier;
+	effect.forceNeutralAffinity = forceNeutralAffinity;
+	activeStatusEffects.push_back(std::move(effect));
+}
+
+void Enemy::clearStatusEffectsFrom(const std::string& sourceKey)
+{
+	activeStatusEffects.erase(
+		std::remove_if(activeStatusEffects.begin(), activeStatusEffects.end(),
+			[&sourceKey](const ActiveStatusEffect& effect) { return effect.sourceKey == sourceKey; }),
+		activeStatusEffects.end());
+}
+
+bool Enemy::hasStatusEffect(const std::string& type) const
+{
+	for (const auto& effect : activeStatusEffects)
+	{
+		if (effect.type == type) return true;
+	}
+	return false;
+}
+
+double Enemy::getEffectiveElementalMultiplier(Elements element) const
+{
+	ElementMask bit = elementBit(element);
+
+	bool forceNeutral = false;
+	double statusMultiplier = 1.0;
+	for (const auto& effect : activeStatusEffects)
+	{
+		if (!(effect.damageMultiplierMask & bit)) continue;
+		statusMultiplier *= effect.damageMultiplier;
+		if (effect.forceNeutralAffinity) forceNeutral = true;
+	}
+
+	double baseMultiplier = forceNeutral ? 1.0 : elementalAffinity.getMultiplier(element);
+	return baseMultiplier * statusMultiplier;
+}
+
+void Enemy::playStatusEffectVisual(const Textures& textureTemplate, float scale, float duration, sf::Vector2f offset)
+{
+	sf::Vector2f position = sprites->getPosition() + offset;
+	// Non-traveling, exactly like Familiar::activeEffects' enemy-overlay use - same start and
+	// target position, zero damage, purely cosmetic (see Projectile's own class comment).
+	activeStatusVisuals.emplace_back(position, position, duration, BigNumber(0), ElementalPower(), textureTemplate, scale);
+}
+
+void Enemy::updateStatusEffects(float dt)
+{
+	for (auto it = activeStatusEffects.begin(); it != activeStatusEffects.end(); )
+	{
+		it->tickCountdown -= dt;
+		int ticksThisEffect = 0; // TEMPORARY - FPS-drop investigation, see FrameProfiler.h
+		while (it->tickCountdown <= 0.0f)
+		{
+			if (it->onTick) it->onTick();
+			it->tickCountdown += it->tickInterval;
+			ticksThisEffect++;
+		}
+		if (ticksThisEffect > 1) // TEMPORARY - see above
+		{
+			std::cout << "[FrameProfiler] status effect '" << it->type << "' caught up " << ticksThisEffect << " ticks in one frame" << std::endl;
+		}
+
+		if (!it->permanent)
+		{
+			it->remainingDuration -= dt;
+			if (it->remainingDuration <= 0.0f)
+			{
+				it = activeStatusEffects.erase(it);
+				continue;
+			}
+		}
+		++it;
+	}
+
+	for (auto visual = activeStatusVisuals.begin(); visual != activeStatusVisuals.end(); )
+	{
+		if (visual->update(dt)) visual = activeStatusVisuals.erase(visual);
+		else ++visual;
+	}
+}
+
+void Enemy::drawStatusEffectVisuals(sf::RenderWindow* window) const
+{
+	for (const auto& visual : activeStatusVisuals)
+	{
+		visual.draw(window);
+	}
+}
+
 void Enemy::drawHealthBar(sf::RenderWindow* window)
 {
 	window->draw(healthBarBackground);
@@ -342,6 +465,8 @@ Enemy::State Enemy::captureState() const
 	state.health = health;
 	state.deathAnimationStarted = deathAnimationStarted;
 	state.bossTimeRemaining = bossTimeRemaining;
+	state.activeStatusEffects = activeStatusEffects;
+	state.activeStatusVisuals = activeStatusVisuals;
 	state.spritesState = sprites->captureState();
 	return state;
 }
@@ -351,6 +476,8 @@ void Enemy::restoreState(const State& state)
 	health = state.health;
 	deathAnimationStarted = state.deathAnimationStarted;
 	bossTimeRemaining = state.bossTimeRemaining;
+	activeStatusEffects = state.activeStatusEffects;
+	activeStatusVisuals = state.activeStatusVisuals;
 	sprites->restoreState(state.spritesState);
 
 	updateHealthBar();

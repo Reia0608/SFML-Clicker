@@ -62,7 +62,9 @@
       <AdditionalDependencies>sfml-graphics-d.lib;sfml-window-d.lib;sfml-system-d.lib;sfml-audio-d.lib;sfml-network-d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /y /d "$(SFML_BIN)\*.dll" "$(OutDir)"</Command>
+      <Command>xcopy /y /d "$(SFML_BIN)\*.dll" "$(OutDir)"
+xcopy /y /d /s /i "$(ProjectDir)Textures" "$(OutDir)Textures\"
+xcopy /y /d /s /i "$(ProjectDir)Fonts" "$(OutDir)Fonts\"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -85,7 +87,10 @@
       <AdditionalDependencies>sfml-graphics.lib;sfml-window.lib;sfml-system.lib;sfml-audio.lib;sfml-network.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /y /d "$(SFML_BIN)\*.dll" "$(OutDir)"</Command>
+      <Command>xcopy /y /d "$(SFML_BIN)\*.dll" "$(OutDir)"
+xcopy /y /d /s /i "$(ProjectDir)Textures" "$(OutDir)Textures\"
+xcopy /y /d /s /i "$(ProjectDir)Fonts" "$(OutDir)Fonts\"
+xcopy /y /d "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\14.44.35112\x86\Microsoft.VC143.CRT\*.dll" "$(OutDir)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -93,12 +98,15 @@
     <ClCompile Include="AchievementsTab.cpp" />
     <ClCompile Include="DebugTab.cpp" />
     <ClCompile Include="DPSTracker.cpp" />
+    <ClCompile Include="AutoAttack.cpp" />
     <ClCompile Include="Enemy.cpp" />
     <ClCompile Include="EnemySpawner.cpp" />
     <ClCompile Include="Familiar.cpp" />
     <ClCompile Include="FamiliarTab.cpp" />
     <ClCompile Include="FloatingDamageText.cpp" />
     <ClCompile Include="Fonts.cpp" />
+    <ClCompile Include="FpsCounter.cpp" />
+    <ClCompile Include="FrameProfiler.cpp" />
     <ClCompile Include="FrameStepHistory.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="Hero.cpp" />
@@ -137,6 +145,7 @@
     <ClInclude Include="Elements.h" />
     <ClInclude Include="BigNumber.h" />
     <ClInclude Include="DPSTracker.h" />
+    <ClInclude Include="AutoAttack.h" />
     <ClInclude Include="Enemy.h" />
     <ClInclude Include="EnemySpawner.h" />
     <ClInclude Include="EnemyType.h" />
@@ -146,6 +155,8 @@
     <ClInclude Include="FamiliarType.h" />
     <ClInclude Include="FloatingDamageText.h" />
     <ClInclude Include="Fonts.h" />
+    <ClInclude Include="FpsCounter.h" />
+    <ClInclude Include="FrameProfiler.h" />
     <ClInclude Include="FrameStepHistory.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="Hero.h" />

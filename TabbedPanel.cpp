@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "TabbedPanel.h"
 #include "PublicVariables.h"
+#include "LayoutManager.h"
 #include <algorithm>
 
 void TabbedPanel::updateLayout()
@@ -12,6 +13,9 @@ void TabbedPanel::updateLayout()
 
 	tabHeaderStrip.setSize({ tabPanelWidth, headerHeight });
 	tabHeaderStrip.setPosition({ panelX, 0.0f });
+
+	titleStrip.setSize({ tabPanelWidth, titleHeight });
+	titleStrip.setPosition({ panelX, headerHeight });
 
 	// Only currently-visible tabs get a slot in the header strip - a hidden tab (e.g. Familiars
 	// before a familiar has been bought) reserves no space, same "hidden takes no space" rule
@@ -32,8 +36,8 @@ void TabbedPanel::updateLayout()
 		}
 	}
 
-	contentAreaOrigin = { panelX, headerHeight };
-	contentAreaSize = { tabPanelWidth, windowSize.y - headerHeight };
+	contentAreaOrigin = { panelX, headerHeight + titleHeight };
+	contentAreaSize = { tabPanelWidth, windowSize.y - headerHeight - titleHeight };
 	for (auto* content : tabContents)   // layout all the tabs, not only the active ones, so it looks correct
 	{
 		content->onResize(contentAreaOrigin, contentAreaSize);
@@ -48,6 +52,15 @@ TabbedPanel::TabbedPanel()
 
 	tabHeaderStrip.setFillColor(sf::Color(30, 30, 30));
 
+	titleStrip.setFillColor(sf::Color(40, 40, 40)); // sits between the dark header strip and the lighter panel background
+
+	titleLabel = new Text("", "Fonts/arial.ttf");
+	titleLabel->setFillColor(sf::Color::White);
+	titleLabel->setCharacterSize(18);
+
+	scrollbarTrack.setFillColor(sf::Color(20, 20, 20, 180));
+	scrollbarThumb.setFillColor(sf::Color(150, 150, 150, 220));
+
 	updateLayout();
 }
 
@@ -55,15 +68,17 @@ TabbedPanel::~TabbedPanel()
 {
 	for (auto* button : tabButtons) delete button;
 	for (auto* content : tabContents) delete content;
+	delete titleLabel;
 }
 
-void TabbedPanel::addTab(std::string name, TabContent* content, std::function<bool()> isVisible)
+void TabbedPanel::addTab(std::string name, std::string iconImagePath, TabContent* content, std::function<bool()> isVisible)
 {
 	size_t index = tabContents.size();
 
-	UIButton* headerButton = new UIButton(name, [this, index]() { activeTabIndex = index; });
+	UIButton* headerButton = UIButton::createIconButton(iconImagePath, [this, index]() { activeTabIndex = index; });
 	tabButtons.push_back(headerButton);
 	tabContents.push_back(content);
+	tabNames.push_back(name);
 	scrollOffsets.push_back(0.0f); // every tab starts scrolled to the top
 
 	tabIsVisible.push_back(isVisible ? isVisible : std::function<bool()>([]() { return true; }));
@@ -74,9 +89,44 @@ void TabbedPanel::addTab(std::string name, TabContent* content, std::function<bo
 	updateLayout();
 }
 
+void TabbedPanel::resyncVisibilityAfterLoad()
+{
+	for (size_t i = 0; i < tabIsVisible.size(); i++)
+	{
+		tabWasVisible[i] = tabIsVisible[i](); // whatever the save file just restored counts as "already seen", not a fresh reveal
+		tabRevealPending[i] = false;
+	}
+}
+
 void TabbedPanel::onResize()
 {
 	updateLayout();
+}
+
+sf::FloatRect TabbedPanel::getScrollbarThumbRect(float scrollOffset, float maxScroll, float contentHeight) const
+{
+	float trackX = contentAreaOrigin.x + contentAreaSize.x - scrollbarWidth - scrollbarMargin;
+
+	float visibleFraction = contentAreaSize.y / contentHeight; // 0..1 - how much of the content fits on screen at once
+	float thumbHeight = std::max(scrollbarMinThumbHeight, contentAreaSize.y * visibleFraction);
+	float scrollFraction = maxScroll > 0.0f ? scrollOffset / maxScroll : 0.0f; // 0 = top, 1 = bottom
+	float thumbY = contentAreaOrigin.y + scrollFraction * (contentAreaSize.y - thumbHeight);
+
+	return sf::FloatRect({ trackX, thumbY }, { scrollbarWidth, thumbHeight });
+}
+
+void TabbedPanel::drawScrollbar(sf::RenderWindow* window, float scrollOffset, float maxScroll, float contentHeight)
+{
+	float trackX = contentAreaOrigin.x + contentAreaSize.x - scrollbarWidth - scrollbarMargin;
+
+	scrollbarTrack.setPosition({ trackX, contentAreaOrigin.y });
+	scrollbarTrack.setSize({ scrollbarWidth, contentAreaSize.y });
+	window->draw(scrollbarTrack);
+
+	sf::FloatRect thumbRect = getScrollbarThumbRect(scrollOffset, maxScroll, contentHeight);
+	scrollbarThumb.setPosition(thumbRect.position);
+	scrollbarThumb.setSize(thumbRect.size);
+	window->draw(scrollbarThumb);
 }
 
 void TabbedPanel::render(sf::RenderWindow* window)
@@ -109,12 +159,21 @@ void TabbedPanel::render(sf::RenderWindow* window)
 
 	if (visibilityChanged) updateLayout(); // a tab appeared - redistribute the header strip to include it
 
+	window->draw(titleStrip);
+	if (activeTabIndex < tabNames.size())
+	{
+		titleLabel->setString(tabNames[activeTabIndex]);
+		LayoutManager::applyAnchor(*titleLabel, Anchor::MiddleCenter, { 0.0f, 0.0f }, titleStrip.getPosition(), titleStrip.getSize());
+		window->draw(*titleLabel);
+	}
+
 	if (!tabContents.empty() && currentlyVisible[activeTabIndex])
 	{
 		TabContent* content = tabContents[activeTabIndex];
 		tabRevealPending[activeTabIndex] = false; // being viewed right now - stop blinking
 
-		float maxScroll = std::max(0.0f, content->getContentHeight() - contentAreaSize.y);
+		float contentHeight = content->getContentHeight();
+		float maxScroll = std::max(0.0f, contentHeight - contentAreaSize.y);
 		scrollOffsets[activeTabIndex] = std::min(scrollOffsets[activeTabIndex], maxScroll); // clamp in case the window grew and there is less to scroll now
 
 		if (maxScroll > 0.0f)   // tab's content is taller than the visible area -> it is scrollable
@@ -137,6 +196,8 @@ void TabbedPanel::render(sf::RenderWindow* window)
 			content->render(window);
 
 			window->setView(previousView); // restore the normal view (default scissor = whole target) for everything drawn after this panel
+
+			drawScrollbar(window, scrollOffsets[activeTabIndex], maxScroll, contentHeight); // drawn outside the scissor so it's never clipped
 		}
 		else
 		{
@@ -145,12 +206,60 @@ void TabbedPanel::render(sf::RenderWindow* window)
 	}
 }
 
+bool TabbedPanel::handleScrollbarMousePressed(sf::Vector2f pos)
+{
+	if (tabContents.empty()) return false;
+
+	TabContent* content = tabContents[activeTabIndex];
+	float contentHeight = content->getContentHeight();
+	float maxScroll = std::max(0.0f, contentHeight - contentAreaSize.y);
+	if (maxScroll <= 0.0f) return false; // this tab fits without scrolling - no scrollbar is even drawn
+
+	sf::FloatRect thumbRect = getScrollbarThumbRect(scrollOffsets[activeTabIndex], maxScroll, contentHeight);
+
+	if (thumbRect.contains(pos))
+	{
+		isDraggingScrollbar = true;
+		dragGrabOffsetY = pos.y - thumbRect.position.y; // keeps the thumb's position under the cursor as you drag, instead of snapping its top to the cursor
+		return true;
+	}
+
+	sf::FloatRect trackRect({ thumbRect.position.x, contentAreaOrigin.y }, { scrollbarWidth, contentAreaSize.y });
+	if (trackRect.contains(pos))
+	{
+		// clicked the bare track above/below the thumb - jump the thumb so its center lands on the click,
+		// then start dragging from there so you can keep dragging without having to click a second time
+		isDraggingScrollbar = true;
+		dragGrabOffsetY = thumbRect.size.y / 2.0f;
+		updateScrollbarDrag(pos, maxScroll, contentHeight);
+		return true;
+	}
+
+	return false;
+}
+
+void TabbedPanel::updateScrollbarDrag(sf::Vector2f mousePos, float maxScroll, float contentHeight)
+{
+	float visibleFraction = contentAreaSize.y / contentHeight;
+	float thumbHeight = std::max(scrollbarMinThumbHeight, contentAreaSize.y * visibleFraction);
+	float trackSpan = contentAreaSize.y - thumbHeight; // how far the thumb's top can travel, top to bottom
+
+	float thumbY = mousePos.y - dragGrabOffsetY;
+	float scrollFraction = trackSpan > 0.0f
+		? std::clamp((thumbY - contentAreaOrigin.y) / trackSpan, 0.0f, 1.0f)
+		: 0.0f;
+
+	scrollOffsets[activeTabIndex] = scrollFraction * maxScroll;
+}
+
 bool TabbedPanel::handleClick(sf::Vector2f pos)
 {
 	for (auto* button : tabButtons)
 	{
 		if (button->handleClick(pos)) return true;
 	}
+
+	if (handleScrollbarMousePressed(pos)) return true; // grabbing the scrollbar takes priority over the content underneath it
 
 	if (!tabContents.empty())
 	{
@@ -162,6 +271,27 @@ bool TabbedPanel::handleClick(sf::Vector2f pos)
 	}
 
 	return false;
+}
+
+void TabbedPanel::handleMouseMoved(sf::Vector2f pos)
+{
+	if (!isDraggingScrollbar || tabContents.empty()) return;
+
+	TabContent* content = tabContents[activeTabIndex];
+	float contentHeight = content->getContentHeight();
+	float maxScroll = std::max(0.0f, contentHeight - contentAreaSize.y);
+	if (maxScroll <= 0.0f)
+	{
+		isDraggingScrollbar = false; // the tab stopped being scrollable mid-drag (e.g. window resize) - nothing left to drag
+		return;
+	}
+
+	updateScrollbarDrag(pos, maxScroll, contentHeight);
+}
+
+void TabbedPanel::handleMouseReleased()
+{
+	isDraggingScrollbar = false;
 }
 
 void TabbedPanel::handleMouseWheelScrolling(sf::Vector2f mousePos, float deltaY)

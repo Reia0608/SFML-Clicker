@@ -39,6 +39,7 @@ void EnemySpawner::spawnRegularEnemy()
 		selectedEnemyType.deathSpriteAddress, selectedEnemyType.deathSpriteSize, selectedEnemyType.deathFrameTimerMax,
 		scaledGold, false, selectedEnemyType.elementalAffinity
 	);
+	enemy->setName(selectedEnemyType.name); // EnemyType's own constructor has no name param (same reason elementalAffinity is applied separately above), so copy it over here
 	enemy->getSprites()->setPosition({ gameAreaWidth / 2.0f, 250.0f });
 	enemy->refreshHealthBar();
 }
@@ -58,6 +59,7 @@ void EnemySpawner::spawnBoss()
 		bossType.deathSpriteAddress, bossType.deathSpriteSize, bossType.deathFrameTimerMax,
 		scaledGold, true, bossType.elementalAffinity
 	);
+	enemy->setName(bossType.name); // same gap as spawnRegularEnemy() above - the boss's "Slime King" name was never actually reaching the Enemy object
 	enemy->getSprites()->setPosition({ gameAreaWidth / 2.0f, 200.0f });
 	enemy->refreshHealthBar();
 }
@@ -146,6 +148,7 @@ void EnemySpawner::render(sf::RenderWindow* window)
 	if (enemy != nullptr)
 	{
 		window->draw(*enemy->getSprites());
+		enemy->drawStatusEffectVisuals(window); // Burn/Soaked/etc.'s own visual (e.g. a burning overlay) - world layer, so it depth-sorts with the enemy's own sprite rather than always sitting on top
 	}
 }
 
@@ -208,7 +211,7 @@ double EnemySpawner::getEnemyElementalMultiplier(ElementMask attackElementMask) 
 double EnemySpawner::getEnemyElementalMultiplierForElement(Elements element) const
 {
 	if (enemy == nullptr) return 1.0;
-	return enemy->getElementalAffinity().getMultiplier(element);
+	return enemy->getEffectiveElementalMultiplier(element); // folds in any active status effect's damage-taken modifier (e.g. Soaked) on top of this enemy's own base affinity
 }
 
 sf::Vector2f EnemySpawner::getEnemyPosition() const
@@ -289,7 +292,29 @@ void EnemySpawner::update(float dt)
 	else
 	{
 		enemy->getSprites()->animate(dt);
+		enemy->updateStatusEffects(dt); // Burn/Soaked/etc. - only ticks while alive, same gate as the sprite's own idle animation just above
 	}
+}
+
+void EnemySpawner::applyStatusEffectToEnemy(const std::string& type, const std::string& sourceKey, float duration, bool permanent, float tickInterval, std::function<void()> onTick,
+	ElementMask damageMultiplierMask, double damageMultiplier, bool forceNeutralAffinity)
+{
+	if (enemy) enemy->applyStatusEffect(type, sourceKey, duration, permanent, tickInterval, std::move(onTick), damageMultiplierMask, damageMultiplier, forceNeutralAffinity);
+}
+
+void EnemySpawner::clearEnemyStatusEffectsFrom(const std::string& sourceKey)
+{
+	if (enemy) enemy->clearStatusEffectsFrom(sourceKey);
+}
+
+bool EnemySpawner::doesEnemyHaveStatusEffect(const std::string& type) const
+{
+	return enemy && enemy->hasStatusEffect(type);
+}
+
+void EnemySpawner::playStatusEffectVisualOnEnemy(const Textures& textureTemplate, float scale, float duration, sf::Vector2f offset)
+{
+	if (enemy) enemy->playStatusEffectVisual(textureTemplate, scale, duration, offset);
 }
 
 int EnemySpawner::getCurrentStageNumber() const

@@ -25,10 +25,12 @@
 #include "AchievementsTab.h"
 #include "UnlockManager.h"
 #include "DPSTracker.h"
-#include "Text.h"
 #include "HUD.h"
 #include "FrameStepHistory.h"
 #include "Ruler.h"
+#include "FpsCounter.h"
+#include "FrameProfiler.h"
+#include "Textures.h"
 #include <array>
 
 
@@ -75,6 +77,12 @@ private:
 				.activeFrame = 5,
 				.projectileSpawnOffset = {60.0f, -4.0f}
 			}
+		}).setPassive({
+			.name = "Burn",
+			.unlockFeatureKey = "FireDragonBurnUnlocked",
+			.dealsDamage = true, // Burn ticks its own damage - see FamiliarPassive::dealsDamage; drives StatisticsTab's per-familiar "Passive Damage" line
+			.duration = 5.0f,
+			.tickInterval = 1.0f
 		}),
 
 			// Fire Dragon: melee physical-only auto-attack (claws, no fireball) + a manually-activated big fireball, pure fire damage
@@ -119,6 +127,15 @@ private:
 					.projectileSpawnOffset = {244.0f, 46.0f},
 					.unlockFeatureKey = "FireDragonFireballUnlocked" // gated: hidden from the HUD until FamiliarTab's purchase button sets this (see FamiliarTab.cpp, and the "Juvenile Flame" achievement in AchievementManager.cpp that unlocks that purchase button in the first place)
 				}
+			}).setPassive({
+				.name = "Burn",
+				.unlockFeatureKey = "FireDragonBurnUnlocked",
+				.dealsDamage = true, // Burn ticks its own damage - see FamiliarPassive::dealsDamage; drives StatisticsTab's per-familiar "Passive Damage" line
+				.duration = 7.0f,
+				.tickInterval = 1.0f
+				// Adult/Ancient not defined yet (no FamiliarType entry for those stages exists) -
+				// test-phase target once they are: Adult duration 10.0f; Ancient permanent = true
+				// (duration then ignored).
 			}),
 
 			// Baby Water Dragon: a single ranged auto-attack that consists of water damage into one fireball
@@ -138,23 +155,28 @@ private:
 					.usesElementalDamage = true,
 					.baseElementalPower = ElementalPower().set(Water, BigNumber(1)),
 					.isRanged = true,
-					.projectileAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/fire_bolt/blue/fire_bolt_small/fire_bolt_small.png",
-					.projectileSpriteSize = {60, 60},
+					.projectileAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/Bubbles/bubble_4_aqua.png",
+					.projectileSpriteSize = {96, 96},
 					.projectileFrameTimerMax = 0.10f,
 					.projectileFrameCount = 6, // sheet is 360x60px = 6 frames of 60x60
-					.projectileScale = 2.5f,
+					.projectileScale = 1.0f,
 					.projectileTravelDuration = 1.8f,
 					.projectileMotion = ProjectileMotion::Bobbing,
 					.projectileMotionAmplitude = 8.0f,
-					.activeFrame = 5,       // first bubble
+					.activeFrame = 4,       // first bubble
 					.projectileSpawnOffset = {60.0f, -4.0f},
 					.projectileCount = 5,   // 5 bubbles total
-					.loopStartFrame = 7,    // frames 7-10 repeat - one more bubble each pass - until all 5 have fired
-					.loopEndFrame = 10
+					.loopStartFrame = 4,    // frames 7-10 repeat - one more bubble each pass - until all 5 have fired
+					.loopEndFrame = 7
 					// still using the fireball placeholder sprite and straight-line travel - real
 					// bubble art and the up/down bobbing motion (point a. in your message) are later
 					// steps. projectileSpawnOffset left at default pending testing, same as before.
 				}
+			}).setPassive({
+				.name = "Soaked",
+				.unlockFeatureKey = "WaterDragonSoakedUnlocked",
+				.duration = 5.0f,
+				.magnitude = 2.0f // damage taken from Water/Ice/Lightning x2
 			}),
 
 			// Water Dragon: melee physical-only auto-attack (claws, no fireball) + a manually-activated big fireball, pure fire damage
@@ -189,11 +211,12 @@ private:
 					.usesElementalDamage = true,
 					.baseElementalPower = ElementalPower().set(Water, BigNumber(5000)),
 					.isRanged = true,
-					.projectileAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/fire_bolt/blue/fire_bolt_small/fire_bolt_small.png",
-					.projectileSpriteSize = {60, 60},
+					// Sprites from https://sanctumpixel.itch.io/bubble-pixel-art-effect
+					.projectileAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/Bubbles/bubble_4_aqua.png",
+					.projectileSpriteSize = {96, 96},
 					.projectileFrameTimerMax = 0.10f,
 					.projectileFrameCount = 6,
-					.projectileScale = 5.0f, // bigger than the auto-attack fireball used to be, it's the "big fireball" now
+					.projectileScale = 2.5f, // bigger than the auto-attack fireball used to be, it's the "big fireball" now
 					.projectileTravelDuration = 1.8f,
 					.projectileMotion = ProjectileMotion::Bobbing,
 					.projectileMotionAmplitude = 15.0f,
@@ -212,6 +235,14 @@ private:
 					// the ground now though, per point c. in your message. Tune liftHeight if the
 					// leap looks too high/low once you test it.
 				}
+			}).setPassive({
+				.name = "Soaked",
+				.unlockFeatureKey = "WaterDragonSoakedUnlocked",
+				.duration = 7.0f,
+				.magnitude = 4.0f // damage taken from Water/Ice/Lightning x4
+				// Adult/Ancient not defined yet (no FamiliarType entry for those stages exists) -
+				// test-phase target once they are: Adult duration 10.0f, magnitude 10.0f; Ancient
+				// permanent = true, magnitude 100.0f, forceNeutralAffinity = true.
 			}),
 
 			// Baby Wind Dragon: a single ranged auto-attack that consists of a combination of physical and wind damage into one wind gust
@@ -231,6 +262,7 @@ private:
 					.usesElementalDamage = true,
 					.baseElementalPower = ElementalPower().set(Wind, BigNumber(5)),
 					.isRanged = true,
+					// Sprites from https://sanctumpixel.itch.io/bubble-pixel-art-effect
 					.projectileAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/fire_bolt/green/fire_bolt_small/fire_bolt_small.png",
 					.projectileSpriteSize = {60, 60},
 					.projectileFrameTimerMax = 0.10f,
@@ -244,6 +276,10 @@ private:
 					// still using the fireball placeholder sprite (point e. in your message) -
 					// only the motion is real tornado-style curving so far, no tornado art yet
 				}
+			}).setPassive({
+				.name = "Keen Gale",
+				.unlockFeatureKey = "WindDragonKeenGaleUnlocked",
+				.magnitude = 0.10f // +10% crit chance
 			}),
 
 			// Wind Dragon: melee physical-only auto-attack (claws, no fireball) + a manually-activated multi-hitting wind slashes, wind and physical damage
@@ -268,6 +304,7 @@ private:
 				FamiliarAttack{
 					.name = "Wind Swipes",
 					.animationKey = "attack2",
+					// Sprites from https://ragnapixel.itch.io/combat-fx
 					.animationAddress = "Textures/Familiars/Dragons/sprites/adultdragon/sheet/WindDragon_bronze_attack2.png",
 					.animationFrameTimerMax = 0.10f,
 					.baseCooldown = 15.0f,
@@ -289,11 +326,11 @@ private:
 					.descendEndFrame = 19,
 					.liftHeight = 40.0f,
 					.spawnsEnemyEffect = true,
-					.enemyEffectAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/fire_bolt/green/fire_bolt_small/fire_bolt_small.png",
+					.enemyEffectAnimationAddress = "Textures/Familiars/Dragons/sprites/effect/WindSwipes/Wind_Swipes.png",
 					.enemyEffectSpriteSize = {60, 60},
 					.enemyEffectFrameTimerMax = 0.10f,
 					.enemyEffectFrameCount = 6,
-					.enemyEffectScale = 2.0f,
+					.enemyEffectScale = 6.0f,
 					.enemyEffectDuration = 0.3f,
 					.unlockFeatureKey = "WindDragonWindSwipesUnlocked" // gated: hidden from the HUD until FamiliarTab's purchase button sets this (see FamiliarTab.cpp, and the "Juvenile Flame" achievement in AchievementManager.cpp that unlocks that purchase button in the first place)
 					// still using the fireball placeholder art for the enemy-overlay slash effect
@@ -301,6 +338,14 @@ private:
 					// multi-hit + overlay on the enemy, hover self-movement) is real. Total damage
 					// is now ~10x what it was as a single hit - tell me if you want it rebalanced.
 				}
+			}).setPassive({
+				.name = "Keen Gale",
+				.unlockFeatureKey = "WindDragonKeenGaleUnlocked",
+				.magnitude = 0.25f // +25% crit chance
+				// Adult/Ancient not defined yet (no FamiliarType entry for those stages exists) -
+				// test-phase target once they are: Adult magnitude 0.40f; Ancient magnitude 0.60f
+				// with overflowConvertsToSecondaryStat = true (lets crit chance exceed 100%,
+				// converting the overflow 1:1 into bonus crit damage).
 			}),
 
 			// add more familiars here later
@@ -343,8 +388,11 @@ private:
 	// remaining call sites are migrated onto the roster.
 	Familiar* familiar = nullptr;
 	DebugTab* debugTab = nullptr;
+	bool debugUnlocked = false;      // Debug tab stays hidden until this flips true - see checkDebugUnlockCode(). Never saved: resets every launch.
+	std::string debugUnlockBuffer;   // last few characters typed, used to spot the "debug" unlock code
 	AchievementsTab* achievementsTab = nullptr; // non-owning - owned by tabbedPanel, kept here to wire the unlock->blink callback
 	FamiliarTab* familiarTab = nullptr; // non-owning
+	StatisticsTab* statisticsTab = nullptr; // non-owning - owned by tabbedPanel, kept here to wire the Keen Gale crit-bonus display callbacks
 	UnlockManager* unlockManager;
 	HUD* hud = nullptr;
 
@@ -369,6 +417,58 @@ private:
 	void initFamiliars(); // constructs one locked Familiar object per species into ownedFamiliars (each starting at its baby stage) - called once
 	int findFamiliarTypeIndex(FamiliarName name, Age age) const; // index into familiarTypeList for that EXACT (species, stage) pair, or -1 if it isn't defined there (yet) - used by loadFromFile()/evolve handling to resolve a Familiar's saved/next stage via Familiar::evolveTo(), without reconstructing the Familiar object itself (which would orphan every pointer already handed out to it - ShopTab, AchievementManager, its damage/resolver callbacks)
 
+	// --- Familiar passive abilities (Burn, Soaked, Keen Gale) --- (not to be confused with
+	// "Familiar passive damage" below, a completely unrelated, older idle-damage mechanic that
+	// happens to share the word "passive" - these are the purchasable per-lineage abilities from
+	// the brainstorm). Each one's per-stage tuning (duration, magnitude, ...) lives as data on
+	// that stage's own FamiliarType entry (see familiarTypeList's .setPassive(...) calls, and
+	// FamiliarPassive.h for what each field means) - these functions just read
+	// fireDragon/waterDragon/windDragon->getPassive() and act on it, rather than switching on
+	// Age themselves, so a stage's numbers only ever need to change in one place.
+
+	// Called from fireDragon's own onDamageDealt callback (see initFamiliars()) whenever one of
+	// its hits carries Fire and its passive's unlockFeatureKey has been purchased - applies/
+	// refreshes the "Burn" status effect on whatever enemy that hit just landed on (see Enemy.h's
+	// generic status effect framework). Only ever reachable while fireDragon is actually slotted -
+	// a landed hit implies that already (see the slot-only loop in update()) - and
+	// unassignFamiliarSlot() is what cuts an already-active Burn off the instant that stops being true.
+	void applyFireBurn(Familiar* fireDragon);
+
+	// Visual tuning - not per-stage, so these stay as plain constants rather than living on
+	// FamiliarPassive. Expect to retune these once real burn-overlay art exists.
+	float fireBurnVisualScale = 1.5f;
+	float fireBurnVisualDuration = 0.6f; // one full loop of the 6-frame placeholder sheet at 0.10s/frame
+	sf::Vector2f fireBurnVisualOffset = { 0.0f, 30.0f }; // nudges the visual toward the enemy's lower half - eyeballed, retune in-engine
+	Textures* fireBurnVisualTexture = nullptr; // allocated once in initFamiliars(), deleted in ~Game() - the same placeholder "red fireball" sheet Fire Dragon's own projectile already uses
+
+	// Called from waterDragon's own onDamageDealt callback whenever one of its hits carries Water
+	// and its passive's unlockFeatureKey has been purchased - applies/refreshes a "Soaked" status
+	// that boosts damage THIS enemy takes from Water/Ice/Lightning (see
+	// Enemy::getEffectiveElementalMultiplier()), on top of its own weakness/resistance, not
+	// replacing it - except at Ancient, where FamiliarPassive::forceNeutralAffinity also forces
+	// those 3 elements to neutral first. Unlike Burn, Soaked deals no damage of its own and never
+	// ticks - it's a pure damage-taken modifier, so every other familiar's (or Fire's Burn)
+	// Water/Ice/Lightning damage gets boosted automatically, with no changes needed anywhere else.
+	// Slot/cancellation rules are identical to Burn.
+	void applySoaked(Familiar* waterDragon);
+
+	ElementMask waterSoakedAffectedElements = elementMaskOf({ Water, Ice, Lightning }); // which elements Soaked boosts - the same 3 regardless of stage, so not part of FamiliarPassive
+
+	// Unlike Burn/Soaked, Keen Gale never touches an enemy or a status effect at all - it's a
+	// standing bonus to the HERO's own crit chance (and, at Ancient, crit damage), so it's
+	// recomputed fresh every time the Hero actually rolls a crit (see the call site in
+	// handleClick's lambda) rather than being added to/removed from Hero's own critChance - that
+	// way it's only ever "on" for exactly as long as Wind Dragon stays slotted and unlocked, with
+	// nothing to clean up when that stops being true.
+	struct KeenGaleCritBonus
+	{
+		double chanceBonus = 0.0; // added straight onto Hero's own crit chance for this roll only
+		double damageBonus = 0.0; // added straight onto Hero's own crit damage multiplier for this roll only - only ever non-zero at Ancient, once chanceBonus pushes the total past 100%
+	};
+	KeenGaleCritBonus computeKeenGaleCritBonus() const;
+
+	double keenGaleOvercritToCritDamageRatio = 1.0; // 1:1 for now - every 1% of total crit chance past 100% becomes +1% crit damage - shared across stages, so not part of FamiliarPassive
+
 	// Stable, human-readable save-file identifiers for a species ("FireDragon"/"WaterDragon"/...) -
 	// used for both the per-species [Familiar:X] save sections and FamiliarSlots' occupant string,
 	// instead of the enum's raw ordinal, which isn't safe to persist (reordering FamiliarName
@@ -391,46 +491,10 @@ private:
 	float passiveDamageTickTimer = 0.0f;                     // seconds accumulated since the last passive damage tick
 	static constexpr float passiveDamageTickInterval = 1.0f; // passive damage is dealt in one lump sum every this-many seconds ("10 damage every second")
 	DPSTracker passiveFamiliarDPSTracker; // same pattern as Hero::heroDPSTracker/Familiar::passiveFamiliarDPSTracker - its windowDuration is kept in sync with passiveDamageTickInterval in Game::Game(), so one lump-sum tick per window reads back as a steady DPS instead of spiking then dropping to 0
-	Text* passiveFamiliarDPSText = nullptr; // "Passive Familiar DPS" HUD line - owned directly by Game (unlike Hero's/Familiar's own DPS text) since this stat belongs to the roster as a whole, not to any single drawable object
-	void initPassiveFamiliarDPSText(); // creates passiveFamiliarDPSText; called once from Game::Game()
-	void updatePassiveFamiliarDPSText(); // refreshes passiveFamiliarDPSText's string + position; called every frame from updateFamiliarPassiveDamage()
-
-	// --- Active (slotted) familiar DPS ---
-	// Each slotted familiar tracks its OWN rolling DPS (Familiar::getFamiliarDPS()), but they used
-	// to each draw their own on-screen text at this exact same anchored spot - with 2+ familiars
-	// slotted, that just overlapped into unreadable stacked text instead of one meaningful number.
-	// Same fix as passiveFamiliarDPSText above: one combined line, owned by Game, summed fresh
-	// every frame from whichever familiars are currently in familiarSlots.
-	Text* activeFamiliarDPSText = nullptr;
-	void initActiveFamiliarDPSText(); // creates activeFamiliarDPSText; called once from Game::Game()
-	void updateActiveFamiliarDPSText(); // refreshes activeFamiliarDPSText's string + position from the current familiarSlots; called every frame from update()
-
-	// Dusty rose/pink - passive familiar damage's source-identity color. Originally pale lavender
-	// (205,195,225), but that sat too close in hue to Familiar::dpsColor's silver-blue
-	// (190,210,235) - both cool, both similarly light, ~25 degrees apart on the wheel - so at
-	// small sizes with a black outline the two floating-number colors were nearly indistinguishable.
-	// Pink is ~120+ degrees from blue, staying just as pale/desaturated but far enough apart to
-	// read clearly even against the same background, and sidesteps blue/purple confusion under
-	// some color vision deficiencies (tritanopia) that a smaller lavender tweak wouldn't have.
-	// Used both for passiveFamiliarDPSText and passed to EnemySpawner::handleClick() whenever a
-	// passive tick lands, so its floating damage numbers on the enemy match its own HUD line (see
-	// Familiar::dpsColor for the equivalent on the familiar's own auto-attack/ability damage).
-	static constexpr sf::Color passiveDPSColor = sf::Color(230, 165, 195);
-
-	// Semi-transparent backing panel behind the whole bottom-right stat-text stack (currency,
-	// Hero DPS, click damage, familiar DPS, passive DPS). The three source-identity DPS colors
-	// above are deliberately pale/desaturated so they don't collide with future vivid elemental
-	// colors, but that same paleness reads poorly against some future biomes (rocky mountain
-	// grays especially) with nothing behind it - this panel guarantees a consistent dark backdrop
-	// regardless of what the game world's art looks like there, rather than hand-tuning per biome.
-	// Sized dynamically every frame (see updateHUDStatPanelLayout()) around whatever text is
-	// actually visible right now, rather than a fixed size - the stack can be as short as 3 lines
-	// (no familiar unlocked yet) or as long as 5 (unlocked, evolved, slotted), and "Gold: 1.46Mil"
-	// is a lot wider than "Gold: 12" - a fixed box would either clip long text or float around short text.
-	sf::RectangleShape hudStatPanel;
-	static constexpr float hudStatPanelPadding = 8.0f; // gap between the panel's edge and the text bounds it wraps
-	void initHUDStatPanel();         // creates hudStatPanel; called once from Game::Game()
-	void updateHUDStatPanelLayout(); // resizes/repositions hudStatPanel to wrap whatever stat text is currently visible - called every frame from update(), after all of that text has been refreshed for the frame
+	// The "Passive Familiar DPS"/"Familiar DPS" HUD lines and their backing panel (hudStatPanel)
+	// are owned by HUD now (see HUD::setPassiveFamiliarDPS/setActiveFamiliarDPS/updateStatPanel) -
+	// Game just feeds them fresh numbers every frame. HUD::passiveDPSColor is still the
+	// source-identity color passed to EnemySpawner::handleClick() for passive-damage floating numbers.
 
 	int getUnlockedFamiliarCount() const;       // how many familiars are currently unlocked, in total, across every lineage (ownership counts, not slotting - see familiarSlots' comment above)
 	int getFamiliarEvolutionCount(const Familiar* f) const; // how many times `f` has evolved, derived from its current stage's Age (see .cpp for the Age->count reasoning and its caveats) - no separate counter stored anywhere
@@ -450,9 +514,10 @@ private:
 
 	void onFamiliarSlotPurchased();                                // adds one new, empty slot
 	int getFamiliarSlotCount() const;
-	std::string getFamiliarSlotLabel(int slotIndex) const;         // occupant's display label (from familiarTypeList, like getFamiliarSlotLabel()'s sibling helpers above), or "" if that slot is empty
+	FamiliarIcon getFamiliarSlotIcon(int slotIndex) const;          // occupant's icon info (from familiarTypeList), or a default-constructed (isEmpty()) FamiliarIcon if that slot is empty
 	std::vector<Familiar*> getAvailableFamiliarsForSlotting() const; // every owned, unlocked, currently-unassigned familiar across all lineages, in ownedFamiliars' fixed order - the single source both of the two below derive from, so a pickedIndex always means the same familiar in both
-	std::vector<std::string> getAvailableFamiliarNamesForSlotting() const; // display label of every familiar getAvailableFamiliarsForSlotting() returns, same order
+	std::vector<FamiliarIcon> getAvailableFamiliarIconsForSlotting() const; // icon info for every familiar getAvailableFamiliarsForSlotting() returns, same order
+	FamiliarIcon buildFamiliarIcon(Familiar* f) const;              // shared by the two above - resolves f's current (species, stage) into familiarTypeList's sprite/label data
 	void assignFamiliarToSlot(int slotIndex, int pickedIndex);     // pickedIndex indexes into getAvailableFamiliarsForSlotting()/getAvailableFamiliarNamesForSlotting(); no-op if either index is invalid or the slot's already occupied
 	void unassignFamiliarSlot(int slotIndex);
 	bool isFamiliarInAnySlot(const Familiar* f) const;
@@ -496,6 +561,18 @@ private:
 	sf::Keyboard::Scancode rulerKey = sf::Keyboard::Scancode::R;
 	Ruler* ruler = nullptr;
 
+	// Remappable the same way - a plain owned member like ruler above, toggled independently of
+	// everything else. Debug-only FPS readout (see FpsCounter.h).
+	sf::Keyboard::Scancode fpsCounterKey = sf::Keyboard::Scancode::F;
+	FpsCounter* fpsCounter = nullptr;
+
+	// TEMPORARY - see FrameProfiler.h. Remove once the FPS-drop investigation (2026-11-04) is done.
+	FrameProfiler frameProfiler;
+
+	// Remappable the same way. Does nothing unless UnlockManager has "HeroAutoAttackUnlocked" set -
+	// see pollEvents() (toggles it) and runSimulationTick() (actually fires it on schedule).
+	sf::Keyboard::Scancode autoAttackKey = sf::Keyboard::Scancode::A;
+
 	// Only exists between pausing and unpausing - created/destroyed in pollEvents() alongside
 	// hud->togglePause(), so it can never be asked to step anything while the game is running.
 	FrameStepHistory* frameStepHistory = nullptr;
@@ -504,8 +581,14 @@ private:
 	void stepFrameForward();
 	void stepFrameBackward();
 
+	// Rolls damage, hits the current enemy, and plays/advances the Hero's attack animation + stats -
+	// the one place "the Hero attacks" actually happens. Shared by the manual click (pollEvents())
+	// and the auto-attack timer (runSimulationTick()), so the two can never drift apart.
+	void performHeroAttack();
+
 	void onWindowResized(sf::Vector2u newSize);
 	void pollEvents();
+	void checkDebugUnlockCode(char32_t unicode); // feeds debugUnlockBuffer; unlocks the Debug tab once it ends in "debug"
 	void update();
 	void render();
 
@@ -540,6 +623,8 @@ public:
 	void debugResetHeroStats() override;
 	void debugResetItems() override;
 	void debugResetShopPrices() override;
+	void debugSetFrameProfilerLoggingEnabled(bool enabled) override;
+	bool debugIsFrameProfilerLoggingEnabled() const override;
 
 	// saving and loading game state
 	static std::string trim(const std::string& str);

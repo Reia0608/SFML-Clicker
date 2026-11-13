@@ -45,7 +45,7 @@ private:
 	ElementalPower elementalPower; // this projectile's elemental power, broken down per element - 0 active elements = physical only
 
 	ProjectileMotion motion = ProjectileMotion::Linear;
-	float motionAmplitude = 0.0f; // Bobbing: how far side-to-side it oscillates, in pixels. GroundArc: how far the curve bulges off the straight line, in pixels. Unused for Linear.
+	float motionAmplitude = 20.0f; // Bobbing: how far side-to-side it oscillates, in pixels. GroundArc: how far the curve bulges off the straight line, in pixels. Unused for Linear.
 	float motionCycles = 0.0f;    // Bobbing only: how many full back-and-forth oscillations over the whole flight. Unused for Linear/GroundArc - GroundArc is always a single smooth bulge, not a repeating wave.
 
 public:

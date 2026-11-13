@@ -18,6 +18,40 @@ namespace
 	const std::string kSaveFilePath = "Save/savegame.json"; // keep in sync with Game::saveFilePath
 }
 
+void OptionsTab::relayoutButtons() // mirrors ShopTab/FamiliarTab's own version - positions only currently-visible buttonEntries, so a hidden one (autoAttackButton, before it's unlocked) leaves no gap behind it
+{
+	const float buttonHeight = 50.0f;
+	const float margin = 10.0f;
+	const float spacing = 10.0f;
+
+	float y = lastContentAreaOrigin.y + margin;
+	for (auto& entry : buttonEntries)
+	{
+		bool visible = entry.isVisible();
+		entry.button->setEnabled(visible); // UIButton already skips render()/handleClick() while disabled
+
+		if (!visible) continue;
+
+		entry.button->setLayout(
+			{ lastContentAreaOrigin.x + margin, y },
+			{ lastContentAreaSize.x - margin * 2.0f, buttonHeight }
+		);
+		y += buttonHeight + spacing;
+	}
+
+	// loadButton sits right after the dynamic stack above, keeping the exact same independently-
+	// enabled behavior it always had (see enableLoadButton()) - it's deliberately kept out of
+	// buttonEntries, since its enabled state is driven from outside (Game, whenever a save does or
+	// doesn't exist yet), not from a visibility rule relayoutButtons() should ever overwrite.
+	loadButton->setLayout(
+		{ lastContentAreaOrigin.x + margin, y },
+		{ lastContentAreaSize.x - margin * 2.0f, buttonHeight }
+	);
+	y += buttonHeight + spacing;
+
+	contentHeight = (y - lastContentAreaOrigin.y) - spacing + margin;
+}
+
 void OptionsTab::updateWindowModeLabel()
 {
 	windowModeButton->setLabelText("Window Mode: " + windowModeToString(windowController->getWindowMode()) + " >");
@@ -41,6 +75,16 @@ void OptionsTab::updateDeathAnimationsLabel()
 	deathAnimationsButton->setLabelText(std::string("Death Animations: ") + (deathAnimationsEnabled ? "ON" : "OFF"));
 }
 
+void OptionsTab::updateAutoAttackLabel()
+{
+	autoAttackButton->setLabelText(std::string("Hero Auto-Attack (A): ") + (hero->isAutoAttackActive() ? "ON" : "OFF"));
+}
+
+void OptionsTab::updateTextSizeLabel()
+{
+	textSizeButton->setLabelText("Tab Text Size: " + std::to_string(tabBodyTextSize) + "px >");
+}
+
 void OptionsTab::onWindowModeClicked()
 {
 	WindowMode current = windowController->getWindowMode();
@@ -58,7 +102,7 @@ void OptionsTab::onWindowModeClicked()
 
 void OptionsTab::onResolutionClicked()
 {
-	if (windowController->getWindowMode() == WindowMode::Fullscreen) return;   // Auflösung im Fullscreen nicht wählbar
+	if (windowController->getWindowMode() == WindowMode::Fullscreen) return;   // resolution isn't selectable while in Fullscreen
 
 	int count = static_cast<int>(windowController->getAvailableResolutions().size());
 	int nextIndex = (windowController->getResolutionIndex() + 1) % count;
@@ -72,6 +116,20 @@ void OptionsTab::onDeathAnimationsClicked()
 	updateDeathAnimationsLabel();
 }
 
+void OptionsTab::onAutoAttackClicked()
+{
+	hero->toggleAutoAttack();
+	updateAutoAttackLabel();
+}
+
+void OptionsTab::onTextSizeClicked()
+{
+	tabBodyTextSize++;
+	if (tabBodyTextSize > tabBodyTextSizeMax) tabBodyTextSize = tabBodyTextSizeMin;
+	updateTextSizeLabel();
+	if (onTabTextSizeChanged) onTabTextSizeChanged(); // lets Game re-lay-out every tab now, instead of waiting for the next time AchievementsTab/StatisticsTab happen to be re-laid-out on their own
+}
+
 void OptionsTab::onSaveClicked()
 {
 	saveable->saveToFile(kSaveFilePath);
@@ -81,7 +139,7 @@ void OptionsTab::onLoadClicked()
 {
 	if (!std::filesystem::exists(kSaveFilePath))
 	{
-		// z.B. Button deaktiviert lassen, Hinweistext anzeigen, etc.
+		// e.g. leave the button disabled, show a hint text, etc.
 		return;
 	}
 
@@ -89,11 +147,14 @@ void OptionsTab::onLoadClicked()
 	refreshLabels();
 }
 
-OptionsTab::OptionsTab(IWindowController* windowController, ISaveable* saveable) : windowController(windowController), saveable(saveable)
+OptionsTab::OptionsTab(IWindowController* windowController, ISaveable* saveable, UnlockManager* unlockManager, Hero* hero)
+	: windowController(windowController), saveable(saveable), unlockManager(unlockManager), hero(hero)
 {
 	windowModeButton = new UIButton("", [this]() { onWindowModeClicked(); });
 	resolutionButton = new UIButton("", [this]() { onResolutionClicked(); });
 	deathAnimationsButton = new UIButton("", [this]() { onDeathAnimationsClicked(); });
+	autoAttackButton = new UIButton("", [this]() { onAutoAttackClicked(); });
+	textSizeButton = new UIButton("", [this]() { onTextSizeClicked(); });
 	saveButton = new UIButton("Save Game", [this]() { onSaveClicked(); });
 	loadButton = new UIButton("Load Game", [this]() { onLoadClicked(); });
 
@@ -102,6 +163,18 @@ OptionsTab::OptionsTab(IWindowController* windowController, ISaveable* saveable)
 	updateWindowModeLabel();
 	updateResolutionLabel();
 	updateDeathAnimationsLabel();
+	updateAutoAttackLabel();
+	updateTextSizeLabel();
+
+	buttonEntries =
+	{
+		{ windowModeButton,      [this]() { return true; } },
+		{ resolutionButton,      [this]() { return true; } },
+		{ deathAnimationsButton, [this]() { return true; } },
+		{ autoAttackButton,      [this]() { return this->unlockManager->isUnlocked("HeroAutoAttackUnlocked"); } },
+		{ textSizeButton,        [this]() { return true; } },
+		{ saveButton,            [this]() { return true; } },
+	};
 }
 
 OptionsTab::~OptionsTab()
@@ -109,60 +182,36 @@ OptionsTab::~OptionsTab()
 	delete windowModeButton;
 	delete resolutionButton;
 	delete deathAnimationsButton;
+	delete autoAttackButton;
+	delete textSizeButton;
 	delete saveButton;
 	delete loadButton;
 }
 
 void OptionsTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize)
 {
-	const float buttonHeight = 50.0f;
-	const float margin = 10.0f;
-	const float spacing = 10.0f;
-
-	windowModeButton->setLayout(
-		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin },
-		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
-	);
-
-	resolutionButton->setLayout(
-		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin + (buttonHeight + spacing) },
-		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
-	);
-
-	deathAnimationsButton->setLayout(
-		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin + (buttonHeight + spacing) * 2 },
-		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
-	);
-
-	saveButton->setLayout(
-		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin + (buttonHeight + spacing) * 3 },
-		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
-	);
-
-	loadButton->setLayout(
-		{ contentAreaOrigin.x + margin, contentAreaOrigin.y + margin + (buttonHeight + spacing) * 4 },
-		{ contentAreaSize.x - margin * 2.0f, buttonHeight }
-	);
-
-	// total height of the button stack in its unscrolled layout (5 buttons), so TabbedPanel can enable scrolling if it overflows
-	contentHeight = margin * 2.0f + 5 * (buttonHeight + spacing) - spacing;
+	lastContentAreaOrigin = contentAreaOrigin;
+	lastContentAreaSize = contentAreaSize;
+	relayoutButtons();
 }
 
 void OptionsTab::render(sf::RenderWindow* window)
 {
-	windowModeButton->render(window);
-	resolutionButton->render(window);
-	deathAnimationsButton->render(window);
-	saveButton->render(window);
+	hasUnseenUnlock = false; // being viewed right now - stop pulsing, same as FamiliarTab::render()/AchievementsTab::render()
+
+	for (auto& entry : buttonEntries)
+	{
+		entry.button->render(window); // internally a no-op while disabled
+	}
 	loadButton->render(window);
 }
 
 bool OptionsTab::handleClick(sf::Vector2f pos)
 {
-	if (windowModeButton->handleClick(pos)) return true;
-	if (resolutionButton->handleClick(pos)) return true;
-	if (deathAnimationsButton->handleClick(pos)) return true;
-	if (saveButton->handleClick(pos)) return true;
+	for (auto& entry : buttonEntries)
+	{
+		if (entry.button->handleClick(pos)) return true;
+	}
 	if (loadButton->handleClick(pos)) return true;
 	return false;
 }
@@ -177,4 +226,7 @@ void OptionsTab::refreshLabels()
 	updateWindowModeLabel();
 	updateResolutionLabel();
 	updateDeathAnimationsLabel();
+	updateAutoAttackLabel();
+	updateTextSizeLabel();
+	relayoutButtons(); // picks up autoAttackButton's visibility the instant it unlocks, same as ShopTab/FamiliarTab's own refreshLabels()
 }

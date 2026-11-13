@@ -8,6 +8,7 @@ void AchievementManager::initAchievements()
 	Familiar* waterFam = waterFamiliar;
 	Familiar* windFam = windFamiliar;
 	ItemManager* items = itemManager;
+	UnlockManager* unlocks = unlockManager;
 
 	// --- existing achievements stay exactly as they are ---
 	achievements.push_back(Achievement("First Blood", "Defeat 1 enemy",
@@ -43,6 +44,13 @@ void AchievementManager::initAchievements()
 	addThresholdAchievement("Endurance", "Play for 5 hours",
 		[stats]() { return static_cast<int>(stats->getPlayTimeSeconds()); }, 18000, BigNumber(10000000));
 
+	// Unlocks the Hero Auto-Attack toggle in Options (see Game.cpp's onAchievementClaimed, which
+	// sets "HeroAutoAttackUnlocked" on claim) - a modest milestone since this is a quality-of-life
+	// feature, not a power upgrade. Tune name/threshold/reward freely.
+	achievements.push_back(Achievement("Autopilot", "Click 1 times",
+		[stats]() { return stats->getTotalClicks() >= 1; }, BigNumber(5000),
+		"5000 Gold + Unlocks Auto-Attack in Options"));
+
 	achievements.push_back(Achievement("Gold Rush", "Earn 100,000 total gold",
 		[stats]() { return stats->getTotalGoldEarned() >= BigNumber(100000); }, BigNumber(50000)));
 
@@ -70,6 +78,58 @@ void AchievementManager::initAchievements()
 	achievements.push_back(Achievement("Juvenile Gale", "Evolve your Wind Dragon into its Juvenile stage",
 		[windFam]() { return windFam->getAge() == Age::Juvenile; }, BigNumber(0),
 		"Unlocks: Wind Swipes purchase in the Familiar shop", "BabyWindDragonActive"));
+
+	// Passive-ability achievements - one per lineage, hidden until that familiar is unlocked at
+	// all (see "FireDragonUnlocked" etc., set alongside recordFamiliarUnlocked() in
+	// ShopTab::onBuyFamiliarClicked / FamiliarTab::addFamiliarUnlockButton), not gated by evolution
+	// stage the way "Juvenile Flame" etc. are above. The threshold itself comes from
+	// UnlockManager's unlock-order ladder (see UnlockManager::getElementalDamageThreshold()) - it's
+	// only fixed once that familiar actually gets unlocked, so it can't be baked into the
+	// description text here the way a normal threshold achievement's number would be; the
+	// condition below still reads the correct, by-then-frozen value live. Claiming these doesn't
+	// grant the passive itself - same two-step pattern as "Juvenile Flame" etc. - it only unlocks
+	// FamiliarTab's purchase button for it (see Game.cpp's onAchievementClaimed).
+	achievements.push_back(Achievement("Flame Mastery", "Deal enough cumulative Fire damage with your Fire Dragon to earn its passive ability",
+		[fam, unlocks]() { return fam->getCumulativeElementalDamage() >= unlocks->getElementalDamageThreshold("FireDragon"); }, BigNumber(0),
+		"Unlocks: Burn purchase in the Familiar shop", "FireDragonUnlocked"));
+
+	achievements.push_back(Achievement("Tidal Mastery", "Deal enough cumulative Water damage with your Water Dragon to earn its passive ability",
+		[waterFam, unlocks]() { return waterFam->getCumulativeElementalDamage() >= unlocks->getElementalDamageThreshold("WaterDragon"); }, BigNumber(0),
+		"Unlocks: Soaked purchase in the Familiar shop", "WaterDragonUnlocked"));
+
+	achievements.push_back(Achievement("Gale Mastery", "Deal enough cumulative Wind damage with your Wind Dragon to earn its passive ability",
+		[windFam, unlocks]() { return windFam->getCumulativeElementalDamage() >= unlocks->getElementalDamageThreshold("WindDragon"); }, BigNumber(0),
+		"Unlocks: Keen Gale purchase in the Familiar shop", "WindDragonUnlocked"));
+
+	// --- Familiar slot achievements ---
+	// "Expand the Ranks": buying a slot is species-agnostic (any lineage, any slot number counts),
+	// so this is always visible and gives nothing beyond the achievement itself - see
+	// Game::onFamiliarSlotPurchased() for where "FirstFamiliarSlotBought" gets set.
+	achievements.push_back(Achievement("Expand the Ranks", "Buy your first familiar slot",
+		[unlocks]() { return unlocks->isUnlocked("FirstFamiliarSlotBought"); }, BigNumber(100000), "100K Gold"));
+
+	// "Front Line X": one per lineage, hidden until the player actually COULD slot that familiar
+	// (has a free slot AND that familiar unlocked - see "XDragonSlotEligible" in
+	// Game::updateFamiliarFeatureGates(), which also flashes the Achievements tab the instant this
+	// becomes true, same as any other newly-revealed achievement). The achievement itself is only
+	// completed once that familiar has actually been placed into an active slot for the first time
+	// - reusing "XDragonActive" (same key "Juvenile Flame" etc. above are gated behind), since
+	// that's already exactly "unlocked and has been slotted at least once".
+	// Reward is that lineage's OWN emblem (itemIndex 0/4/3 = Ruby/Sapphire/Emerald per
+	// ItemManager::initItemDefinitions() - same mapping FamiliarTab's emblem indices use).
+	// NOTE: add one more addItemRewardAchievement() call here (with that lineage's own emblem
+	// index and "XDragonSlotEligible"/"XDragonActive" keys) whenever a new lineage is added.
+	addItemRewardAchievement("Front Line Flame", "Place your Fire Dragon into an active familiar slot",
+		[unlocks]() { return unlocks->isUnlocked("BabyFireDragonActive"); },
+		0, 1, BigNumber(0), "FireDragonSlotEligible"); // 1x Ruby Emblem
+
+	addItemRewardAchievement("Front Line Tide", "Place your Water Dragon into an active familiar slot",
+		[unlocks]() { return unlocks->isUnlocked("BabyWaterDragonActive"); },
+		4, 1, BigNumber(0), "WaterDragonSlotEligible"); // 1x Sapphire Emblem
+
+	addItemRewardAchievement("Front Line Gale", "Place your Wind Dragon into an active familiar slot",
+		[unlocks]() { return unlocks->isUnlocked("BabyWindDragonActive"); },
+		3, 1, BigNumber(0), "WindDragonSlotEligible"); // 1x Emerald Emblem
 
 	achievements.push_back(Achievement("Speedrunner", "Defeat a boss in under 5 seconds",
 		[stats]() {
@@ -212,6 +272,18 @@ bool AchievementManager::claimReward(const std::string& name)
 		}
 	}
 	return false;
+}
+
+std::string AchievementManager::describeWithLiveNumbers(const Achievement& achievement) const
+{
+	std::string familiarKey;
+	if (achievement.name == "Flame Mastery") familiarKey = "FireDragon";
+	else if (achievement.name == "Tidal Mastery") familiarKey = "WaterDragon";
+	else if (achievement.name == "Gale Mastery") familiarKey = "WindDragon";
+	else return achievement.description;
+
+	BigNumber threshold = unlockManager->getElementalDamageThreshold(familiarKey);
+	return achievement.description + " (Target: " + threshold.toString() + " damage)";
 }
 
 void AchievementManager::setClaimed(const std::string& name, bool claimed) // restores saved state without granting gold/items again

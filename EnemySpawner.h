@@ -5,6 +5,7 @@
 #include "Statistics.h"
 #include "ItemManager.h"
 #include "Elements.h"
+#include <functional>
 
 class EnemySpawner // more like an EnemyController, because it handles the spawning and scaling of enemies, as well as the transition between regular enemies and bosses
 {
@@ -28,6 +29,7 @@ EnemyType("Textures/PNG/Slime4/Idle/Slime4_Idle_Front_full.png", {64, 64}, BigNu
 EnemyType("Textures/PNG/Slime5/Idle/Slime5_Idle_Front_full.png", {64, 64}, BigNumber(20), 0.12f, "Textures/PNG/Slime5/Hurt/Slime5_Hurt_full.png", {64, 64}, 0.12f,
 	"Textures/PNG/Slime5/Death/Slime5_Death_Front_full.png", {64, 64}, 0.12f, BigNumber(9)).setName("Electric Slime"), //4 - neutral, no elemental profile set yet
 	};
+
 	EnemyType bossType = EnemyType(
 		"Textures/PNG/Slime6/Idle/Slime6_Idle_Front_full.png", { 64, 64 }, BigNumber(10), 0.15f,
 		"Textures/PNG/Slime6/Hurt/Slime6_Hurt_full.png", { 64, 64 }, 0.15f,
@@ -78,6 +80,16 @@ public:
 	sf::Vector2f getEnemyPosition() const; // used by Familiar to aim its projectiles
 	void setEnemyHealth(BigNumber value); // debug only, needs Enemy::setHealth()
 	void update(float dt); // no longer returns the gold reward - see finishEnemyDefeat()
+
+	// --- Status effects (Burn, Soaked, ...) --- thin pass-throughs to whatever enemy is currently
+	// on the field (no-ops if there isn't one) - Game only ever talks to the enemy through this
+	// class, never Enemy directly, same as handleClick()/getEnemyElementalMultiplierForElement()
+	// above. See Enemy.h for what each of these actually does.
+	void applyStatusEffectToEnemy(const std::string& type, const std::string& sourceKey, float duration, bool permanent, float tickInterval, std::function<void()> onTick,
+		ElementMask damageMultiplierMask = 0, double damageMultiplier = 1.0, bool forceNeutralAffinity = false);
+	void clearEnemyStatusEffectsFrom(const std::string& sourceKey);
+	bool doesEnemyHaveStatusEffect(const std::string& type) const;
+	void playStatusEffectVisualOnEnemy(const Textures& textureTemplate, float scale, float duration, sf::Vector2f offset = { 0.0f, 0.0f });
 
 	int getCurrentStageNumber() const;
 	void setCurrentStageNumber(int newStageNumber); // restores stage progress after loading; respawns the current encounter scaled to the new stage

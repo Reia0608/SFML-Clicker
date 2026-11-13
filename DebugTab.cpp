@@ -21,6 +21,8 @@ DebugTab::DebugTab(IDebugController* debugController) : debugController(debugCon
 	resetPrices = new UIButton("Reset Shop Prices", [this]() { onResetPricesClicked(); });
 	addAllItems = new UIButton("Add 10 to All Items", [this]() { onAddAllItemsClicked(); });
 	removeAllItems = new UIButton("Remove 10 from All Items", [this]() { onRemoveAllItemsClicked(); });
+	frameProfilerLoggingButton = new UIButton("", [this]() { onToggleFrameProfilerLoggingClicked(); });
+	updateFrameProfilerLoggingLabel();
 }
 
 DebugTab::~DebugTab()
@@ -43,6 +45,7 @@ DebugTab::~DebugTab()
 	delete resetPrices;
 	delete addAllItems;
 	delete removeAllItems;
+	delete frameProfilerLoggingButton;
 }
 
 void DebugTab::onSetAttackDamageClicked()
@@ -100,6 +103,17 @@ void DebugTab::onRemoveAllItemsClicked()
 	debugController->debugAdjustAllItems(-10);
 }
 
+void DebugTab::onToggleFrameProfilerLoggingClicked()
+{
+	debugController->debugSetFrameProfilerLoggingEnabled(!debugController->debugIsFrameProfilerLoggingEnabled());
+	updateFrameProfilerLoggingLabel();
+}
+
+void DebugTab::updateFrameProfilerLoggingLabel()
+{
+	frameProfilerLoggingButton->setLabelText(std::string("Frame Profiler Logging: ") + (debugController->debugIsFrameProfilerLoggingEnabled() ? "ON" : "OFF"));
+}
+
 void DebugTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentAreaSize)
 {
 	const float margin = 10.0f;
@@ -122,8 +136,8 @@ void DebugTab::onResize(sf::Vector2f contentAreaOrigin, sf::Vector2f contentArea
 	}
 
 	float resetRowY = contentAreaOrigin.y + margin + 6 * (rowHeight + spacing) + spacing;
-	UIButton* resetButtons[] = { resetStats, resetItems, resetPrices, addAllItems, removeAllItems };
-	for (int i = 0; i < 5; i++)
+	UIButton* resetButtons[] = { resetStats, resetItems, resetPrices, addAllItems, removeAllItems, frameProfilerLoggingButton };
+	for (int i = 0; i < 6; i++)
 	{
 		float y = resetRowY + i * (rowHeight + spacing);
 		resetButtons[i]->setLayout({ contentAreaOrigin.x + margin, y }, { contentAreaSize.x - margin * 2.0f, rowHeight });
@@ -150,6 +164,7 @@ void DebugTab::render(sf::RenderWindow* window)
 	resetPrices->render(window);
 	addAllItems->render(window);
 	removeAllItems->render(window);
+	frameProfilerLoggingButton->render(window);
 }
 
 bool DebugTab::handleClick(sf::Vector2f pos)
@@ -178,6 +193,7 @@ bool DebugTab::handleClick(sf::Vector2f pos)
 	if (resetPrices->handleClick(pos)) return true;
 	if (addAllItems->handleClick(pos)) return true;
 	if (removeAllItems->handleClick(pos)) return true;
+	if (frameProfilerLoggingButton->handleClick(pos)) return true;
 	return false;
 }
 

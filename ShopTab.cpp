@@ -36,11 +36,10 @@ void ShopTab::onBuyAttackClicked()
 {
 	if (hero->trySpendCurrency(attackUpgradeCost))
 	{
-		hero->increaseAttackPower(attackUpgradeAmount);
+		hero->increaseAttackPower(attackUpgradeAmount); // fires Hero::onAttackPowerChanged itself now - no need to poke the click-damage text by hand
 		attackUpgradeCost = attackUpgradeCost * BigNumber(1.1);
 		statistics->recordShopUpgradePurchased();
 		updateButtonLabel();
-		hero->updateClickDamageText();
 	}
 }
 
@@ -66,18 +65,21 @@ void ShopTab::onBuyGoldMultiplierClicked()
 
 void ShopTab::updateFamiliarButtonLabel()
 {
-	buyFamiliarButton->setLabelText("Unlock Baby Fire Dragon (Cost: " + familiarCost.toString() + ")");
+	buyFamiliarButton->setLabelText("Unlock Baby Fire Dragon (Cost: " + unlockManager->getNextFamiliarUnlockCost().toString() + ")");
 }
 
 void ShopTab::onBuyFamiliarClicked()
 {
 	if (familiar->isUnlocked()) return; // safety net, button should already be hidden at this point
 
-	if (hero->trySpendCurrency(familiarCost))
+	if (hero->trySpendCurrency(unlockManager->getNextFamiliarUnlockCost()))
 	{
 		familiar->unlock();
+		unlockManager->recordFamiliarUnlocked("FireDragon");
+		unlockManager->unlock("FireDragonUnlocked"); // lets "Flame Mastery" (see AchievementManager.cpp) become visible
 		statistics->recordShopUpgradePurchased();
 		buyFamiliarButton->setEnabled(false); // one-time purchase, hide permanently
+		if (onFamiliarUnlocked) onFamiliarUnlocked();
 	}
 
 	relayoutButtons();
